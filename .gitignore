@@ -1,0 +1,12 @@
+dist/
+artifacts/*
+!artifacts/patch-occurrences.csv
+*.dll
+*.exe
+*.pdb
+*.log
+*.crp
+*.zip
+*.partial
+*.user
+*.suo
