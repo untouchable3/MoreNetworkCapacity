@@ -31,5 +31,10 @@ namespace MoreNetworkCapacity
         {
             HarmonyBootstrap.Disable();
         }
+
+        public void OnSettingsUI(UIHelperBase helper)
+        {
+            DiagnosticSettings.Add(helper);
+        }
     }
 }

@@ -18,6 +18,11 @@ namespace MoreNetworkCapacity
         internal const int ExpandedNodeCapacity = 65024, ExpandedSegmentCapacity = 65024;
         internal const int VanillaNodeCapacity = 32768, VanillaSegmentCapacity = 36864;
         internal const int VanillaNodeColorIndexBase = 86016;
+        internal static int NodeLoopLimit = 32768, SegmentLoopLimit = 36864;
+        internal static int GetNodeColorIndexBase() { return 49152 + SegmentLoopLimit; }
+        internal static int NodeBufferLength = 32768, SegmentBufferLength = 36864;
+        internal static int GetNodeBufferLength() { return NodeBufferLength; }
+        internal static int GetSegmentBufferLength() { return SegmentBufferLength; }
         internal static int GetAdaptiveRoadsSerializationCapacity() { return 4194304; }
     }
     internal static class NetManagerCustomizer

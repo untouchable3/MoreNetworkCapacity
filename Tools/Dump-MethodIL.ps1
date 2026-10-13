@@ -26,7 +26,7 @@ function Get-TypeName($type) {
 function Visit-Type($type, $prefix) {
     $typeName = Get-TypeName $type
     if (($TypeFilter -eq "") -or ($typeName -like $TypeFilter)) {
-        foreach ($method in $type.Methods) {
+        foreach ($method in (@($type.Methods) + @($type.Constructors))) {
             if (($MethodFilter -ne "") -and ($method.Name -notlike $MethodFilter)) {
                 continue
             }

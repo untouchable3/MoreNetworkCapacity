@@ -57,6 +57,9 @@ namespace MoreNetworkCapacity.Compatibility
 
         internal static void ApplyEarly(Harmony harmony)
         {
+            // Required TM:PE range patches must not silently fail while the
+            // expanded game continues loading or saving incompatible data.
+            TMPECompatibility.ApplyEarly(harmony);
             TryApply("NetworkSkins (early)", delegate
             {
                 NetworkSkinsCompatibility.Apply(harmony);
@@ -83,12 +86,7 @@ namespace MoreNetworkCapacity.Compatibility
             {
                 NetworkSkinsCompatibility.Apply(harmony);
             });
-            TryApply("TM:PE network-load preparation", delegate
-            {
-                TMPECompatibility.PrepareForNetworkDeserialize(
-                    harmony,
-                    expandedSave);
-            });
+            TMPECompatibility.PrepareForNetworkDeserialize(harmony, expandedSave);
             TryApply("AdaptiveRoads network-load preparation", delegate
             {
                 AdaptiveRoadsCompatibility.PrepareForNetworkDeserialize(

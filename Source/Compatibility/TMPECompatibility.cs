@@ -18,6 +18,8 @@ namespace MoreNetworkCapacity.Compatibility
 
         internal static void Reset()
         {
+            TMPETrafficLightRanges.Reset();
+            TMPENetworkArrayPatches.Reset();
             _turnOnRedIndexPatched = false;
             _segmentEndIndexPatched = false;
             _segmentEndDecodePatched = false;
@@ -53,8 +55,20 @@ namespace MoreNetworkCapacity.Compatibility
             ExpandRoutingManager(assembly);
             ExpandGeometryManager(assembly);
             ApplyIndexPatches(harmony, assembly);
+            TMPETrafficLightRanges.Apply(harmony, assembly);
+            TMPENetworkArrayPatches.Apply(harmony, assembly);
 
             Logging.Info("TM:PE compatibility pass completed.");
+        }
+
+        internal static void ApplyEarly(Harmony harmony)
+        {
+            Assembly assembly = ThirdPartyCapacityCompatibility.FindLoadedAssembly(AssemblyName);
+            if (assembly == null) return;
+            // Install metadata-validated range patches before TM:PE's load
+            // callbacks can recreate arrays. Do not initialize game managers here.
+            TMPETrafficLightRanges.Apply(harmony, assembly);
+            TMPENetworkArrayPatches.Apply(harmony, assembly);
         }
 
         internal static void PrepareForNetworkDeserialize(

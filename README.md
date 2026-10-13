@@ -1,4 +1,4 @@
-# More Network Capacity
+# More Network Capacity 1.1.0
 
 提高 Cities: Skylines 1 的网络节点和路段容量，约为原版的两倍，并处理相关存档、渲染及第三方模组数据。需要 Harmony。
 
@@ -16,13 +16,20 @@ Capacity or data compatibility is provided for TM:PE, Node Controller Renewal, A
 
 ## 开发 · Development
 
-当前公开源码基于已验证的 1.0.19。运行缓冲区容量为 65024；兼容性适配并不意味着所有模组组合都已验证。
+当前公开源码为 1.1.0。运行缓冲区容量为 65024；兼容性适配并不意味着所有模组组合都已验证。
 
-The public source is based on validated version 1.0.19. Runtime buffer capacity is 65024; compatibility support does not mean every mod combination has been tested.
+The public source is version 1.1.0. Runtime buffer capacity is 65024; compatibility support does not mean every mod combination has been tested.
 
-已知待修复问题包括高 ID 网络 AI 模拟、TM:PE 高 ID 定时信号灯模拟和保存，以及部分 AdaptiveRoads 颜色索引。
+本次更新 · Changes in this release:
 
-Known issues awaiting fixes include high-ID network AI simulation, TM:PE high-ID timed light simulation and saving, and some AdaptiveRoads color indexes.
+- 修正高 ID 网络 AI 模拟范围。Corrects high-ID network AI simulation ranges.
+- 完善 TM:PE 高 ID 定时灯模拟、保存和清理，以及交通规则保存、缓存重建和全网络更新范围。Improves TM:PE high-ID timed light simulation, saving and cleanup, traffic rule persistence, cache recreation and full-network updates.
+- 修正 AdaptiveRoads 轨道渲染中的节点颜色索引。Corrects node-color indexes in AdaptiveRoads track rendering.
+- 新增一键导出诊断 ZIP，包含版本、模组列表、网络和渲染状态、游戏日志及近期阶段/错误报告；仅本地导出，不自动上传。Adds on-demand diagnostic ZIP export with versions, mod lists, network/render state, game logs and recent stage/error reports; local export only, with no automatic upload.
+
+本地构建及专项检查通过，并有成功读档记录。恢复高 ID 模拟会增加原先遗漏的计算量，本次更新不代表模拟速度提升。
+
+Local builds and targeted checks passed, and a game load completed successfully. Restoring high-ID simulation adds previously omitted work; this release does not claim faster simulation.
 
 Windows 构建需要本地 Cities: Skylines 1 游戏程序集、CitiesHarmony.Harmony.dll、CitiesHarmony.API.dll，以及 .NET Framework 3.5 编译器。依赖 DLL 不包含在仓库中。构建脚本和部分工具目前使用本地 Steam 路径；请先按你的安装位置调整。
 

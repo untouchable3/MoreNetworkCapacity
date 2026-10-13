@@ -422,6 +422,12 @@ namespace MoreNetworkCapacity.Compatibility
                 new Type[] { typeof(ushort) },
                 "NodeLimitTranspiler");
             PatchSimilarLaneIterators(harmony, assembly);
+            PatchMethod(harmony, ThirdPartyCapacityCompatibility.FindType(
+                assembly, "AdaptiveRoads.Manager.NetLaneExt", ModName),
+                "GenerateRenderData", 2, "TrackNodeColorsTranspiler");
+            PatchMethod(harmony, ThirdPartyCapacityCompatibility.FindType(
+                assembly, "AdaptiveRoads.Data.NetworkExtensions.LaneTransition", ModName),
+                "GenerateRenderData", 2, "TrackNodeColorsTranspiler");
 
             if (PatchedMethods.Count == 0)
             {
@@ -1015,6 +1021,39 @@ namespace MoreNetworkCapacity.Compatibility
             IEnumerable<CodeInstruction> instructions)
         {
             return ReplaceLimits(instructions, true, true);
+        }
+
+        public static IEnumerable<CodeInstruction> TrackNodeColorsTranspiler(
+            MethodBase original, IEnumerable<CodeInstruction> instructions)
+        {
+            List<CodeInstruction> list = new List<CodeInstruction>(instructions);
+            bool lane = original.DeclaringType.FullName == "AdaptiveRoads.Manager.NetLaneExt";
+            if (!lane && original.DeclaringType.FullName != "AdaptiveRoads.Data.NetworkExtensions.LaneTransition")
+                throw new InvalidOperationException("Unexpected AdaptiveRoads track color target.");
+            List<int> matches = new List<int>();
+            int constants = 0;
+            for (int i = 0; i < list.Count; ++i)
+            {
+                if (!IsInt32Constant(list[i], Capacity.VanillaNodeColorIndexBase)) continue;
+                ++constants;
+                if (i + 4 >= list.Count) continue;
+                FieldInfo field = list[i + 2].operand as FieldInfo;
+                MethodInfo call = list[i + 4].operand as MethodInfo;
+                if (field == null || list[i + 2].opcode != OpCodes.Ldfld
+                    || (lane ? field.DeclaringType != typeof(NetSegment)
+                        || (field.Name != "m_startNode" && field.Name != "m_endNode") : field.Name != "NodeID")
+                    || list[i + 3].opcode != OpCodes.Add || list[i + 4].opcode != OpCodes.Call
+                    || call == null || call.DeclaringType != typeof(RenderManager)
+                    || call.Name != "GetColorLocation" || call.GetParameters().Length != 1) continue;
+                matches.Add(i);
+            }
+            if (matches.Count != (lane ? 2 : 1) || constants != matches.Count)
+                throw new InvalidOperationException("AdaptiveRoads track node-color pattern changed: " + original.DeclaringType.FullName);
+            MethodInfo helper = AccessTools.Method(typeof(Capacity), "GetNodeColorIndexBase", null, null);
+            if (helper == null) throw new InvalidOperationException("Node color-base helper missing.");
+            foreach (int index in matches) { list[index].opcode = OpCodes.Call; list[index].operand = helper; }
+            Logging.Info("AdaptiveRoads track node colors patched: " + original.DeclaringType.FullName + " (" + matches.Count + ").");
+            return list;
         }
 
         public static IEnumerable<CodeInstruction> NodeLimitTranspiler(
