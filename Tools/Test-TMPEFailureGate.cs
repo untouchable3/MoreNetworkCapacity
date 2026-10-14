@@ -28,7 +28,9 @@ namespace MoreNetworkCapacity.Compatibility
     }
     internal class TMPECompatibility : CompatBase
     {
-        internal static bool FailEarly, FailLoad, Expanded;
+        internal static bool FailEarly, FailLoad, FailApply, Expanded;
+        internal new static void Apply(Harmony h)
+        { if (FailApply) throw new InvalidOperationException("bad TMPE final buffers"); ++Calls; }
         internal static void ApplyEarly(Harmony h) { if (FailEarly) throw new InvalidOperationException("bad TMPE pattern"); }
         internal static void PrepareForNetworkDeserialize(Harmony h, bool expanded)
         { Expanded = expanded; if (FailLoad) throw new InvalidOperationException("bad TMPE load pattern"); }
@@ -42,13 +44,17 @@ namespace MoreNetworkCapacity.Compatibility
     }
     internal class NetworkSkinsCompatibility : CompatBase { }
     internal class NodeControllerCompatibility : CompatBase { }
-    internal class EightyOne2Compatibility : CompatBase { }
+    internal class EightyOne2Compatibility : CompatBase
+    { internal static int EarlyCalls; internal static void ApplyEarly(Harmony h) { ++EarlyCalls; } }
     internal class StaticBufferCompatibility : CompatBase
     {
-        internal static void ApplyAll(Harmony h) { ++Calls; }
+        internal static int RefreshCalls;
+        internal static void ApplyAll(Harmony h) { ++RefreshCalls; }
         internal static void ApplyEarly(Harmony h) { ++Calls; }
     }
-    internal class ZoningAdjusterCompatibility { internal static void Apply() { } }
+    internal class ZoningAdjusterCompatibility
+    { internal static int EarlyCalls; internal static void Apply() { } internal static void Reset() { }
+        internal static void ApplyEarly(Harmony h) { ++EarlyCalls; } }
     internal static class ArrayCompatibility
     {
         internal static FieldInfo FindField(Type type, string name) { return null; }
@@ -68,12 +74,23 @@ public static class TMPEFailureGateTests
             TMPECompatibility.FailEarly = false; TMPECompatibility.FailLoad = true; refused = false;
             try { ThirdPartyCapacityCompatibility.PrepareForNetworkDeserialize(null, true); } catch (InvalidOperationException) { refused = true; }
             Check(refused && TMPECompatibility.Expanded, "Required TMPE load failure swallowed");
+            TMPECompatibility.FailApply = true; refused = false;
+            int calls = CompatBase.Calls;
+            try { ThirdPartyCapacityCompatibility.ApplyAll(null); } catch (InvalidOperationException) { refused = true; }
+            Check(refused && CompatBase.Calls == calls, "Required final TMPE failure swallowed");
+            TMPECompatibility.FailApply = false;
             TMPECompatibility.FailLoad = false; AdaptiveRoadsCompatibility.Fail = true;
             int errors = MoreNetworkCapacity.Logging.Errors;
             ThirdPartyCapacityCompatibility.PrepareForNetworkDeserialize(null, false);
             Check(!TMPECompatibility.Expanded && MoreNetworkCapacity.Logging.Errors == errors + 1,
                 "Vanilla flag lost or unrelated optional failure handling changed");
-            Console.WriteLine("PASS: actual compatibility dispatcher propagates required TMPE failures and preserves vanilla flags/other optional isolation.");
+            Check(EightyOne2Compatibility.EarlyCalls == 1 && ZoningAdjusterCompatibility.EarlyCalls == 1,
+                "Early optional serialization preparation missing");
+            AdaptiveRoadsCompatibility.Fail = false;
+            ThirdPartyCapacityCompatibility.ApplyEarly(null);
+            Check(EightyOne2Compatibility.EarlyCalls == 2 && ZoningAdjusterCompatibility.EarlyCalls == 2,
+                "Enable-time optional serialization hooks missing");
+            Console.WriteLine("PASS: actual dispatcher gates required TMPE enable/load/final failures, preserves vanilla flags/optional isolation and installs early serialization hooks.");
             return 0;
         }
         catch (Exception e) { Console.Error.WriteLine(e); return 1; }

@@ -42,9 +42,19 @@ namespace NodeController
     {
         public object[] Buffer { get; private set; }
         public Manager() { Buffer = new object[32768]; }
-        public void Clear() { }
+        public void Clear() { Buffer = new object[32768]; }
+        public void Replace(object[] value) { Buffer = value; }
         public void StartInitialUpdate(ushort[] toUpdateIds, bool initial) { }
         public void FromXml(object xml, object map, bool initial) { }
+    }
+}
+namespace MoreNetworkCapacity.Compatibility
+{
+    // The real corner flag transpiler has its own actual-DLL/equivalence tests.
+    internal static class NodeControllerFlagChecks
+    {
+        internal static void Reset() { }
+        internal static void Apply(HarmonyLib.Harmony harmony, Assembly assembly) { }
     }
 }
 namespace MoreNetworkCapacity
@@ -61,12 +71,13 @@ namespace MoreNetworkCapacity.Compatibility
 {
     internal static class ThirdPartyCapacityCompatibility
     {
+        internal static int BufferDiscoveries;
         internal static Assembly FindLoadedAssembly(string name) { return Assembly.GetExecutingAssembly(); }
         internal static Type FindType(Assembly assembly, string name, string modName) { return assembly.GetType(name); }
         internal static FieldInfo FindField(Type type, string name)
         { return type.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic); }
         internal static FieldInfo FindBackingField(Type type, string name)
-        { return FindField(type, "<" + name + ">k__BackingField"); }
+        { ++BufferDiscoveries; return FindField(type, "<" + name + ">k__BackingField"); }
     }
 }
 internal static class NodeControllerLoadUpdateTests
@@ -85,6 +96,24 @@ internal static class NodeControllerLoadUpdateTests
         try
         {
             HarmonyLib.Harmony harmony = new HarmonyLib.Harmony();
+            NodeController.Manager nc = new NodeController.Manager();
+            object record = new object(); nc.Buffer[12] = record;
+            NodeControllerCompatibility.EnsureManagerBuffer(nc);
+            Check(nc.Buffer.Length == 65024 && object.ReferenceEquals(record, nc.Buffer[12]), "Expanded NC buffer lost records.");
+            object[] ready = nc.Buffer;
+            int discoveries = ThirdPartyCapacityCompatibility.BufferDiscoveries;
+            for (int i = 0; i < 100000; ++i) NodeControllerCompatibility.EnsureManagerBuffer(nc);
+            Check(ThirdPartyCapacityCompatibility.BufferDiscoveries == discoveries && object.ReferenceEquals(ready, nc.Buffer),
+                "Ready prefixes must perform no metadata rediscovery or buffer replacement.");
+            nc.Clear(); NodeControllerCompatibility.EnsureManagerBuffer(nc);
+            Check(nc.Buffer.Length == 65024 && !object.ReferenceEquals(ready, nc.Buffer), "Same-manager Clear escaped live-array validation.");
+            nc.Replace(null); NodeControllerCompatibility.EnsureManagerBuffer(nc); Check(nc.Buffer == null, "Null buffer must stay untouched.");
+            object[] unknown = new object[50000]; nc.Replace(unknown); NodeControllerCompatibility.EnsureManagerBuffer(nc);
+            Check(object.ReferenceEquals(unknown, nc.Buffer), "Unknown-length NC buffer must stay untouched.");
+            NodeControllerCompatibility.EnsureManagerBuffer(new NodeController.Manager());
+            Check(ThirdPartyCapacityCompatibility.BufferDiscoveries == discoveries, "A new manager of the same type should reuse accessor metadata.");
+            NodeControllerCompatibility.Reset(); NodeControllerCompatibility.EnsureManagerBuffer(nc);
+            Check(ThirdPartyCapacityCompatibility.BufferDiscoveries == discoveries + 1, "Lifecycle reset did not discard accessor metadata.");
             NodeControllerCompatibility.Apply(harmony);
             int patches = harmony.PatchCalls;
             NodeControllerCompatibility.Apply(harmony);
@@ -117,7 +146,7 @@ internal static class NodeControllerLoadUpdateTests
             NodeControllerLoadUpdates.Capture(new ushort[] { 12 }, true);
             Check(NodeControllerLoadUpdates.Replay(null) == 0
                 && NodeControllerLoadUpdates.Replay(manager) == 0, "Invalid load must not leak into the next replay");
-            Console.WriteLine("PASS: initial hook discovery/cache, copied load ids, false/import isolation, valid sparse/high-id replay, deduplication, one-shot consumption and lifecycle reset.");
+            Console.WriteLine("PASS: 100,000 buffer checks without metadata rediscovery, preserved records, Clear/replacement/null/unknown/reset handling, initial hook cache and one-shot high-ID load replay.");
             return 0;
         }
         catch (Exception exception) { Console.Error.WriteLine(exception); return 1; }

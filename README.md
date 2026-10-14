@@ -1,4 +1,4 @@
-# More Network Capacity 1.1.0
+# More Network Capacity 1.1.1
 
 提高 Cities: Skylines 1 的网络节点和路段容量，约为原版的两倍，并处理相关存档、渲染及第三方模组数据。需要 Harmony。
 
@@ -16,20 +16,20 @@ Capacity or data compatibility is provided for TM:PE, Node Controller Renewal, A
 
 ## 开发 · Development
 
-当前公开源码为 1.1.0。运行缓冲区容量为 65024；兼容性适配并不意味着所有模组组合都已验证。
+当前公开源码为 1.1.1。运行缓冲区容量为 65024；兼容性适配并不意味着所有模组组合都已验证。
 
-The public source is version 1.1.0. Runtime buffer capacity is 65024; compatibility support does not mean every mod combination has been tested.
+The public source is version 1.1.1. Runtime buffer capacity is 65024; compatibility support does not mean every mod combination has been tested.
 
 本次更新 · Changes in this release:
 
-- 修正高 ID 网络 AI 模拟范围。Corrects high-ID network AI simulation ranges.
-- 完善 TM:PE 高 ID 定时灯模拟、保存和清理，以及交通规则保存、缓存重建和全网络更新范围。Improves TM:PE high-ID timed light simulation, saving and cleanup, traffic rule persistence, cache recreation and full-network updates.
-- 修正 AdaptiveRoads 轨道渲染中的节点颜色索引。Corrects node-color indexes in AdaptiveRoads track rendering.
-- 新增一键导出诊断 ZIP，包含版本、模组列表、网络和渲染状态、游戏日志及近期阶段/错误报告；仅本地导出，不自动上传。Adds on-demand diagnostic ZIP export with versions, mod lists, network/render state, game logs and recent stage/error reports; local export only, with no automatic upload.
+- 补齐 TM:PE 高 ID 工具标记、缓存、资产导出和遍历范围，并加强关键数组、缓存引用与道路/轨道车道连接的加载检查。Extends TM:PE high-ID tool markers, caches, asset exports and traversal ranges, and strengthens load-time checks for required arrays, cached references and road/track lane connections.
+- 修正 81 Tiles 的高 ID 电力、水等模拟范围与加载适配；修正 Zoning Adjuster 读档时丢失高 ID 路段分区设置的问题。Corrects 81 Tiles high-ID utility simulation ranges and loading compatibility, and preserves high-ID segment zoning settings when Zoning Adjuster loads saved data.
+- 减少 Node Controller 角点标志判断和缓冲区检查中的重复反射开销，保留数组替换及重置后的检查。Reduces repeated reflection in Node Controller corner flag checks and buffer validation, retaining checks after array replacement and reset.
+- 诊断 ZIP 增加暂停、线程、帧号、加载状态及当前工具信息，仅按按钮采集、本地导出，不自动上传。Adds pause, thread, frame, loading and current-tool state to diagnostic ZIPs; captured on demand and exported locally, with no automatic upload.
 
-本地构建及专项检查通过，并有成功读档记录。恢复高 ID 模拟会增加原先遗漏的计算量，本次更新不代表模拟速度提升。
+本地构建及专项检查通过；1.1.1 改动的完整游戏验证仍待完成，尚未量化性能提升。恢复高 ID 模拟会增加原先遗漏的计算量。
 
-Local builds and targeted checks passed, and a game load completed successfully. Restoring high-ID simulation adds previously omitted work; this release does not claim faster simulation.
+Local builds and targeted checks passed; full in-game validation of the 1.1.1 changes remains pending, and performance gains have not been measured. Restoring high-ID simulation adds previously omitted work.
 
 Windows 构建需要本地 Cities: Skylines 1 游戏程序集、CitiesHarmony.Harmony.dll、CitiesHarmony.API.dll，以及 .NET Framework 3.5 编译器。依赖 DLL 不包含在仓库中。构建脚本和部分工具目前使用本地 Steam 路径；请先按你的安装位置调整。
 

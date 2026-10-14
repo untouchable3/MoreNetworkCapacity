@@ -70,6 +70,16 @@ public struct NetNode { public void RefreshJunctionData() { } public void Render
 public struct NetSegment { public void RenderInstance() { } }
 public sealed class NetManager { public Buffer<NetNode> m_nodes = new Buffer<NetNode>(); public Buffer<NetSegment> m_segments = new Buffer<NetSegment>(); public void UpdateColorMap() { } }
 public sealed class BuildingManager { public void UpdateColorMap() { } }
+public sealed class SimulationManager
+{
+    public bool m_simulationPaused = true, m_forcedSimulationPause = true, m_hasActions = true, m_inSimulationStep = true;
+    public uint m_currentFrameIndex = 123;
+    public System.Threading.Thread m_simulationThread = System.Threading.Thread.CurrentThread;
+}
+public sealed class LoadingManager { public bool m_currentlyLoading, m_renderDataReady = true, m_simulationDataReady = true; }
+public class ToolManagerBase { private readonly ToolController m_properties = new ToolController(); }
+public sealed class ToolManager : ToolManagerBase { }
+public sealed class ToolController { public object m_currentTool = new NetManager(), m_nextTool; }
 public sealed class RenderManager
 {
     public static int OBJECT_COLORMAP_WIDTH = 512, OBJECT_COLORMAP_HEIGHT = 512;
@@ -108,15 +118,30 @@ internal static class DiagnosticSnapshotTests
                 && !menu.Summary.Contains("Forbidden"), "Main-menu export must not create game managers");
             Check(!Directory.Exists(root) && menu.Mods.Contains("plugin-fixture") && menu.Patches.Contains("fixture-owner"),
                 "Snapshot must collect metadata without file writes or user-mod instantiation");
+            Check(menu.Summary.Contains("SimulationManager not present") && menu.Summary.Contains("ToolManager not present"),
+                "Pause capture must not initialize absent managers");
             UnityEngine.Texture2D texture = new UnityEngine.Texture2D();
             ColossalFramework.Singleton<NetManager>.Value = new NetManager();
             ColossalFramework.Singleton<NetManager>.exists = true;
             ColossalFramework.Singleton<RenderManager>.Value = new RenderManager { m_objectColorMap = texture };
             ColossalFramework.Singleton<RenderManager>.exists = true;
             UnityEngine.Shader.Global = texture;
+            SimulationManager simulation = new SimulationManager();
+            ColossalFramework.Singleton<SimulationManager>.Value = simulation;
+            ColossalFramework.Singleton<SimulationManager>.exists = true;
+            ColossalFramework.Singleton<LoadingManager>.Value = new LoadingManager();
+            ColossalFramework.Singleton<LoadingManager>.exists = true;
+            ColossalFramework.Singleton<ToolManager>.Value = new ToolManager();
+            ColossalFramework.Singleton<ToolManager>.exists = true;
             DiagnosticBundleInput city = DiagnosticSnapshot.Capture();
             Check(texture.Reads == 8 && city.Summary.Contains("matches manager=True") && city.Summary.Contains("Node buffer=65024"),
                 "Live rendering capture must use only eight samples and identify global binding");
+            Check(city.Summary.Contains("m_simulationPaused=True") && city.Summary.Contains("m_forcedSimulationPause=True")
+                && city.Summary.Contains("m_hasActions=True") && city.Summary.Contains("Simulation thread=alive=True")
+                && simulation.m_simulationPaused && simulation.m_forcedSimulationPause,
+                "Pause snapshot must capture live state without changing it");
+            Check(city.Summary.Contains("m_currentTool=NetManager") && city.Summary.Contains("m_nextTool=null"),
+                "Tool snapshot must read the controller stored in the private inherited field");
             texture.FailRead = true;
             UnityEngine.Shader.Global = new UnityEngine.Texture();
             DiagnosticBundleInput partial = DiagnosticSnapshot.Capture();

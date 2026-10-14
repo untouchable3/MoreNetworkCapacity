@@ -176,9 +176,9 @@ namespace MoreNetworkCapacity.Compatibility
                 return;
             }
 
-            // TM:PE's extension methods read these static arrays directly from
-            // IL. They are not initialized inside TrafficManager.dll, so a
-            // missing refresh leaves lane-connector queries dereferencing null.
+            // TM:PE's extension type initializers capture the game's original
+            // arrays once. Refresh those references after pool replacement,
+            // before lane-connector and AdaptiveRoads initialization use them.
             int refreshed = 0;
             refreshed += RefreshTMPEBufferField(
                 assembly,

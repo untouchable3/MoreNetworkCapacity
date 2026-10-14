@@ -20,6 +20,8 @@ namespace MoreNetworkCapacity.Compatibility
         {
             TMPETrafficLightRanges.Reset();
             TMPENetworkArrayPatches.Reset();
+            TMPEOverlayRanges.Reset();
+            TMPEAdditionalRanges.Reset();
             _turnOnRedIndexPatched = false;
             _segmentEndIndexPatched = false;
             _segmentEndDecodePatched = false;
@@ -54,9 +56,21 @@ namespace MoreNetworkCapacity.Compatibility
             ExpandParkingRestrictionsManager(assembly);
             ExpandRoutingManager(assembly);
             ExpandGeometryManager(assembly);
+            // A failed migration must be detected before expanded split offsets
+            // can be installed, including failures swallowed by optional helpers.
+            TMPEBufferValidation.Validate(assembly);
+            NetManager network = Singleton<NetManager>.instance;
+            if (network == null || network.m_nodes == null || network.m_segments == null || network.m_lanes == null)
+                throw new InvalidOperationException("Required TM:PE live network pools are unavailable.");
+            TMPEBufferValidation.ValidateRuntimeReferences(assembly, network.m_nodes.m_buffer,
+                network.m_segments.m_buffer, network.m_lanes.m_buffer);
             ApplyIndexPatches(harmony, assembly);
+            TMPEBufferValidation.ValidateIndexPatches(_turnOnRedIndexPatched,
+                _segmentEndIndexPatched, _segmentEndDecodePatched, _trafficMeasurementIndexPatched);
             TMPETrafficLightRanges.Apply(harmony, assembly);
             TMPENetworkArrayPatches.Apply(harmony, assembly);
+            TMPEOverlayRanges.Apply(harmony, assembly);
+            TMPEAdditionalRanges.Apply(harmony, assembly);
 
             Logging.Info("TM:PE compatibility pass completed.");
         }
@@ -69,6 +83,8 @@ namespace MoreNetworkCapacity.Compatibility
             // callbacks can recreate arrays. Do not initialize game managers here.
             TMPETrafficLightRanges.Apply(harmony, assembly);
             TMPENetworkArrayPatches.Apply(harmony, assembly);
+            TMPEOverlayRanges.Apply(harmony, assembly);
+            TMPEAdditionalRanges.Apply(harmony, assembly);
         }
 
         internal static void PrepareForNetworkDeserialize(
@@ -102,57 +118,11 @@ namespace MoreNetworkCapacity.Compatibility
                 return;
             }
 
-            Type type = ThirdPartyCapacityCompatibility.FindType(
-                assembly,
-                "TrafficManager.Manager.Impl.LaneConnection."
-                    + "LaneConnectionManager",
-                ModName);
-            if (type == null)
-            {
-                return;
-            }
-
-            object instance = GetInstance(
-                type,
-                "Instance",
-                "LaneConnectionManager");
-            if (instance == null)
-            {
-                return;
-            }
-
-            MethodInfo method = type.GetMethod(
-                "OnBeforeLoadData",
-                BindingFlags.Instance
-                | BindingFlags.Public
-                | BindingFlags.NonPublic,
-                null,
-                Type.EmptyTypes,
-                null);
-            if (method == null)
-            {
-                Logging.Warning(
-                    "Could not find TM:PE LaneConnectionManager."
-                    + "OnBeforeLoadData.");
-                return;
-            }
-
             if (force || !_laneConnectionDataPrepared)
             {
-                try
-                {
-                    method.Invoke(instance, null);
-                    _laneConnectionDataPrepared = true;
-                    Logging.Info(
-                        "Prepared TM:PE LaneConnectionManager before "
-                        + "AdaptiveRoads network refresh.");
-                }
-                catch (Exception exception)
-                {
-                    Logging.Error(
-                        "Failed to prepare TM:PE LaneConnectionManager: "
-                        + exception);
-                }
+                TMPELaneConnectionPreparation.Prepare(assembly);
+                _laneConnectionDataPrepared = true;
+                Logging.Info("Prepared and validated TM:PE road/track lane connections before AdaptiveRoads network refresh.");
             }
         }
 
@@ -557,7 +527,7 @@ namespace MoreNetworkCapacity.Compatibility
                 Capacity.VanillaSegmentCapacity,
                 Capacity.ExpandedSegmentCapacity,
                 CreateParkingEntry,
-                false,
+                true,
                 "TM:PE ParkingRestrictionsManager.parkingAllowed");
         }
 

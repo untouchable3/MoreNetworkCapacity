@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 using ColossalFramework;
 using ColossalFramework.Plugins;
 using HarmonyLib;
@@ -53,6 +54,7 @@ namespace MoreNetworkCapacity
                     + (manager.m_segments == null || manager.m_segments.m_buffer == null ? -1 : manager.m_segments.m_buffer.Length));
             });
             TrySection(summary, "Object color map", delegate { CaptureColorMap(summary); });
+            TrySection(summary, "Simulation and pause state", delegate { CaptureSimulationState(summary); });
             string persistent = Application.persistentDataPath;
             string legacy = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "Colossal Order/Cities_Skylines/MoreNetworkCapacity/ErrorReports");
@@ -100,6 +102,63 @@ namespace MoreNetworkCapacity
             }
         }
 
+        private static void CaptureSimulationState(StringBuilder text)
+        {
+            text.AppendLine("Captured on export. Opening Options may itself force a pause; a true pause flag alone does not identify its owner.");
+            SimulationManager simulation = Singleton<SimulationManager>.exists ? Singleton<SimulationManager>.instance : null;
+            if (simulation == null) text.AppendLine("SimulationManager not present.");
+            else
+            {
+                CaptureFields(text, simulation, new[] { "m_simulationPaused", "m_forcedSimulationPause",
+                    "m_simulationSpeed", "m_selectedSimulationSpeed", "m_hasActions", "m_inSimulationStep",
+                    "m_currentFrameIndex", "m_referenceFrameIndex" });
+                FieldInfo threadField = FindInstanceField(simulation.GetType(), "m_simulationThread");
+                Thread thread = threadField == null ? null : threadField.GetValue(simulation) as Thread;
+                text.AppendLine("Simulation thread=" + (thread == null ? "unavailable" : "alive=" + thread.IsAlive + ", state=" + thread.ThreadState));
+            }
+            LoadingManager loading = Singleton<LoadingManager>.exists ? Singleton<LoadingManager>.instance : null;
+            if (loading == null) text.AppendLine("LoadingManager not present.");
+            else CaptureFields(text, loading, new[] { "m_currentlyLoading", "m_renderDataReady", "m_simulationDataReady" });
+            // Field reads only: never initialize a tool or try to clear a pause lock.
+            ToolManager tools = Singleton<ToolManager>.exists ? Singleton<ToolManager>.instance : null;
+            if (tools == null) text.AppendLine("ToolManager not present.");
+            else
+            {
+                // ToolManager inherits its ToolController field from SimulationManagerBase.
+                FieldInfo properties = FindInstanceField(tools.GetType(), "m_properties");
+                object controller = properties == null ? null : properties.GetValue(tools);
+                if (controller == null) text.AppendLine("ToolController unavailable.");
+                else CaptureFields(text, controller, new[] { "m_currentTool", "m_nextTool" });
+            }
+        }
+
+        private static FieldInfo FindInstanceField(Type type, string name)
+        {
+            for (; type != null; type = type.BaseType)
+            {
+                FieldInfo field = type.GetField(name, BindingFlags.Instance | BindingFlags.Public
+                    | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+                if (field != null) return field;
+            }
+            return null;
+        }
+
+        private static void CaptureFields(StringBuilder text, object instance, string[] names)
+        {
+            foreach (string name in names)
+            {
+                try
+                {
+                    FieldInfo field = FindInstanceField(instance.GetType(), name);
+                    if (field == null) { text.AppendLine(name + "=unavailable"); continue; }
+                    object value = field.GetValue(instance);
+                    text.AppendLine(name + "=" + (value == null ? "null" : value.GetType().IsValueType
+                        ? value.ToString() : value.GetType().FullName));
+                }
+                catch (Exception exception) { text.AppendLine(name + "=unavailable: " + exception.GetType().Name); }
+            }
+        }
+
         private static string CaptureMods()
         {
             StringBuilder text = new StringBuilder("Enabled plugin names, Workshop ids and assembly versions\r\n");
@@ -125,7 +184,7 @@ namespace MoreNetworkCapacity
 
         private static string CapturePatches()
         {
-            StringBuilder text = new StringBuilder("Harmony render patch metadata (not the final combined IL)\r\n");
+            StringBuilder text = new StringBuilder("Harmony render/pause patch metadata (not the final combined IL)\r\n");
             CaptureMethodPatches(text, typeof(RenderManager), "Awake");
             CaptureMethodPatches(text, typeof(NetManager), "UpdateColorMap");
             CaptureMethodPatches(text, typeof(NetNode), "RefreshJunctionData");
@@ -133,6 +192,12 @@ namespace MoreNetworkCapacity
             CaptureMethodPatches(text, typeof(NetNode), "PopulateGroupData");
             CaptureMethodPatches(text, typeof(NetSegment), "RenderInstance");
             CaptureMethodPatches(text, typeof(BuildingManager), "UpdateColorMap");
+            foreach (string name in new[] { "set_SimulationPaused", "set_ForcedSimulationPaused", "set_SelectedSimulationSpeed" })
+                CaptureMethodPatches(text, typeof(SimulationManager), name);
+            Type bindings = typeof(NetManager).Assembly.GetType("Bindings", false);
+            if (bindings != null) CaptureMethodPatches(text, bindings, "set_isSimulationPaused");
+            Type shortcuts = typeof(NetManager).Assembly.GetType("KeyShortcuts", false);
+            if (shortcuts != null) CaptureMethodPatches(text, shortcuts, "SimulationPause");
             return Limit(text.ToString(), 512 * 1024);
         }
 

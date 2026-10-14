@@ -123,7 +123,7 @@ public static class TMPEArrayTests
         try { TMPENetworkArrayPatches.SegmentCount(); } catch (InvalidOperationException) { unsupported = true; }
         Check(unsupported, "Unsupported ushort-wrap buffer accepted");
         Capacity.SegmentBufferLength = 36864;
-        Console.WriteLine("PASS: 16 actual TMPE methods, lifecycle reset/cache recreation, high-ID rule save, vanilla reload, result preservation and flag exclusion.");
+        Console.WriteLine("PASS: " + TMPENetworkArrayPatches.Targets.Length + " actual TMPE methods, lifecycle reset/cache recreation, high-ID rule save, vanilla reload, result preservation and flag exclusion.");
     }
     private static Delegate Compile(string name, Type delegateType, TMPENetworkArrayPatches.Target target)
     {

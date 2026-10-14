@@ -37,7 +37,10 @@ namespace MoreNetworkCapacity.Compatibility
             new Target(Manager + "TurnOnRedManager", "OnBeforeLoadData", 0, 36864, "get_ExtSegments", false),
             new Target(Manager + "TrafficMeasurementManager", "ResetTrafficStats", 0, 36864, "DestroySegmentStats", false),
             new Target(Manager + "SpeedLimitManager", "UpdateNetinfo", 1, 36864, "CacheSegmentSpeeds", false),
-            new Target(Manager + "LaneArrowManager+<>c__DisplayClass17_0", "<UpdateDedicatedTurningLanePolicy>b__0", 0, 36864, "ToSegment", false)
+            new Target(Manager + "LaneArrowManager+<>c__DisplayClass17_0", "<UpdateDedicatedTurningLanePolicy>b__0", 0, 36864, "ToSegment", false),
+            new Target("TrafficManager.UI.TrafficManagerTool", "DebugGuiDisplayNodes", 0, 32768, "ToNode", false),
+            new Target("TrafficManager.UI.TrafficManagerTool", "DebugGuiDisplaySegments", 0, 36864, "ToSegment", false),
+            new Target(Manager + "ExtSegmentEndManager", "InternalPrintDebugInfo", 0, 36864, "ToSegment", false)
         };
         private static bool _installed;
         internal static void Reset() { _installed = false; }

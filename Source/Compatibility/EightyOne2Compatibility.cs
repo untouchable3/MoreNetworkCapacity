@@ -30,6 +30,8 @@ namespace MoreNetworkCapacity.Compatibility
         private static readonly HashSet<string> PatchedMethods =
             new HashSet<string>();
 
+        private sealed class InstalledPatch { internal MethodInfo Target, Patch; internal string Key; }
+        private static readonly List<InstalledPatch> InstalledPatches = new List<InstalledPatch>();
         private static Assembly _assembly;
         private static Type _expandedManagerType;
         private static Type _expandedWaterManagerType;
@@ -37,12 +39,16 @@ namespace MoreNetworkCapacity.Compatibility
         internal static void Reset()
         {
             PatchedMethods.Clear();
+            InstalledPatches.Clear();
+            EightyOne2SimulationRanges.Reset();
             _assembly = null;
             _expandedManagerType = null;
             _expandedWaterManagerType = null;
         }
 
-        internal static void Apply(Harmony harmony)
+        internal static void Apply(Harmony harmony) { Apply(harmony, true); }
+        internal static void ApplyEarly(Harmony harmony) { Apply(harmony, false); }
+        private static void Apply(Harmony harmony, bool expandBuffers)
         {
             _assembly =
                 ThirdPartyCapacityCompatibility.FindLoadedAssembly(
@@ -64,10 +70,10 @@ namespace MoreNetworkCapacity.Compatibility
                 Logging.Warning(
                     "EightyOne2 is loaded but its expanded electricity "
                     + "manager was not found.");
-                return;
+                throw new InvalidOperationException("81 Tiles expanded electricity type missing.");
             }
 
-            EnsureStaticArrays(Capacity.ExpandedNodeCapacity);
+            if (expandBuffers) EnsureStaticArrays(Capacity.ExpandedNodeCapacity);
 
             _expandedWaterManagerType =
                 ThirdPartyCapacityCompatibility.FindType(
@@ -79,12 +85,16 @@ namespace MoreNetworkCapacity.Compatibility
                 Logging.Warning(
                     "EightyOne2 is loaded but its expanded water manager "
                     + "was not found; water serialization may overflow.");
+                throw new InvalidOperationException("81 Tiles expanded water type missing.");
             }
             else
             {
-                EnsureWaterStaticArrays(Capacity.ExpandedNodeCapacity);
+                if (expandBuffers) EnsureWaterStaticArrays(Capacity.ExpandedNodeCapacity);
             }
 
+            int previous = InstalledPatches.Count;
+            try
+            {
             PatchPrefixes(harmony);
             PatchDataContainer(
                 harmony,
@@ -97,6 +107,20 @@ namespace MoreNetworkCapacity.Compatibility
                 "DataContainerDeserializeTranspiler",
                 2);
             PatchWaterReadValidation(harmony);
+            EightyOne2SimulationRanges.Apply(harmony, _assembly);
+            }
+            catch
+            {
+                // Remove only patches attempted during this pass; prior successful hooks remain installed.
+                for (int i = InstalledPatches.Count - 1; i >= previous; --i)
+                {
+                    InstalledPatch attempted = InstalledPatches[i];
+                    harmony.Unpatch(attempted.Target, attempted.Patch);
+                    PatchedMethods.Remove(attempted.Key);
+                    InstalledPatches.RemoveAt(i);
+                }
+                throw;
+            }
 
             Logging.Info("EightyOne2 compatibility pass completed.");
         }
@@ -184,7 +208,7 @@ namespace MoreNetworkCapacity.Compatibility
                 ModName);
             if (type == null)
             {
-                return;
+                throw new InvalidOperationException("81 Tiles water data container missing.");
             }
 
             PatchConstantTranspiler(
@@ -206,7 +230,7 @@ namespace MoreNetworkCapacity.Compatibility
             int parameterCount)
         {
             string key = type.FullName + "|" + methodName + "|nodelimit";
-            if (!PatchedMethods.Add(key))
+            if (PatchedMethods.Contains(key))
             {
                 return;
             }
@@ -223,8 +247,8 @@ namespace MoreNetworkCapacity.Compatibility
                     && methods[i].GetParameters().Length
                         == parameterCount)
                 {
+                    if (target != null) throw new InvalidOperationException("Ambiguous 81 Tiles water read target.");
                     target = methods[i];
-                    break;
                 }
             }
 
@@ -237,7 +261,7 @@ namespace MoreNetworkCapacity.Compatibility
                     + "."
                     + methodName
                     + " for expanded node id validation.");
-                return;
+                throw new InvalidOperationException("81 Tiles water read target missing: " + methodName);
             }
 
             MethodInfo transpiler = typeof(EightyOne2Compatibility)
@@ -246,12 +270,7 @@ namespace MoreNetworkCapacity.Compatibility
                     BindingFlags.Static
                     | BindingFlags.Public
                     | BindingFlags.NonPublic);
-            harmony.Patch(
-                target,
-                null,
-                null,
-                new HarmonyMethod(transpiler),
-                null);
+            Install(harmony, key, target, transpiler, false);
             Logging.Info(
                 "Patched "
                 + type.Name
@@ -296,6 +315,8 @@ namespace MoreNetworkCapacity.Compatibility
                     _assembly,
                     WaterDataPatchesTypeName,
                     ModName);
+            if (electricityDataPatches == null || waterDataPatches == null)
+                throw new InvalidOperationException("81 Tiles electricity/water serialization patch type missing.");
             if (waterDataPatches != null)
             {
                 PatchPrefix(
@@ -321,25 +342,12 @@ namespace MoreNetworkCapacity.Compatibility
             string label)
         {
             string key = type.FullName + "|" + methodName;
-            if (!PatchedMethods.Add(key))
+            if (PatchedMethods.Contains(key))
             {
                 return;
             }
 
-            MethodInfo target = null;
-            MethodInfo[] methods = type.GetMethods(
-                BindingFlags.Static
-                | BindingFlags.Instance
-                | BindingFlags.Public
-                | BindingFlags.NonPublic);
-            for (int i = 0; i < methods.Length; ++i)
-            {
-                if (methods[i].Name == methodName)
-                {
-                    target = methods[i];
-                    break;
-                }
-            }
+            MethodInfo target = ResolveSerializationTarget(type, methodName, label);
 
             if (target == null)
             {
@@ -350,7 +358,7 @@ namespace MoreNetworkCapacity.Compatibility
                     + "."
                     + methodName
                     + " for serialization compatibility.");
-                return;
+                throw new InvalidOperationException("81 Tiles serialization target missing: " + type.FullName + "." + methodName);
             }
 
             MethodInfo prefix = typeof(EightyOne2Compatibility).GetMethod(
@@ -358,12 +366,7 @@ namespace MoreNetworkCapacity.Compatibility
                 BindingFlags.Static
                 | BindingFlags.Public
                 | BindingFlags.NonPublic);
-            harmony.Patch(
-                target,
-                new HarmonyMethod(prefix),
-                null,
-                null,
-                null);
+            Install(harmony, key, target, prefix, true);
             Logging.Info(
                 "Patched EightyOne2."
                 + type.Name
@@ -372,6 +375,36 @@ namespace MoreNetworkCapacity.Compatibility
                 + " for expanded "
                 + label
                 + " storage.");
+        }
+
+        internal static MethodInfo ResolveSerializationTarget(Type type, string methodName, string label)
+        {
+            bool serialize = methodName == "CustomSerialize";
+            if (!serialize && methodName != "CustomDeserialize")
+                throw new InvalidOperationException("Unknown 81 Tiles serialization operation.");
+            Type[] parameters;
+            Type cells;
+            if (label == "electricity")
+            {
+                cells = typeof(ElectricityManager.Cell[]);
+                parameters = serialize
+                    ? new[] { cells, typeof(ElectricityManager.PulseGroup[]), typeof(ElectricityManager.PulseUnit[]) }
+                    : new[] { typeof(ElectricityManager), cells, typeof(ElectricityManager.PulseGroup[]), typeof(ElectricityManager.PulseUnit[]) };
+            }
+            else if (label == "water")
+            {
+                cells = typeof(WaterManager.Cell[]);
+                parameters = serialize
+                    ? new[] { cells, typeof(WaterManager.PulseUnit[]), typeof(WaterManager.PulseUnit[]), typeof(WaterManager.PulseUnit[]) }
+                    : new[] { typeof(WaterManager), cells, typeof(WaterManager.PulseUnit[]), typeof(WaterManager.PulseUnit[]), typeof(WaterManager.PulseUnit[]) };
+            }
+            else throw new InvalidOperationException("Unknown 81 Tiles serialization manager.");
+            // Serialize returns the original cell array; only Deserialize returns void.
+            MethodInfo target = type.GetMethod(methodName, BindingFlags.Static | BindingFlags.Public
+                | BindingFlags.NonPublic, null, parameters, null);
+            if (target == null || target.ReturnType != (serialize ? cells : typeof(void)))
+                throw new InvalidOperationException("81 Tiles serialization signature changed: " + type.FullName + "." + methodName);
+            return target;
         }
 
         private static void PatchDataContainer(
@@ -391,11 +424,11 @@ namespace MoreNetworkCapacity.Compatibility
                 ModName);
             if (type == null)
             {
-                return;
+                throw new InvalidOperationException("81 Tiles electricity data container missing.");
             }
 
             string key = type.FullName + "|" + methodName + "|container";
-            if (!PatchedMethods.Add(key))
+            if (PatchedMethods.Contains(key))
             {
                 return;
             }
@@ -417,7 +450,7 @@ namespace MoreNetworkCapacity.Compatibility
                     + "."
                     + methodName
                     + " for expanded serialization.");
-                return;
+                throw new InvalidOperationException("81 Tiles electricity container target missing: " + methodName);
             }
 
             MethodInfo transpiler = typeof(EightyOne2Compatibility)
@@ -426,12 +459,7 @@ namespace MoreNetworkCapacity.Compatibility
                     BindingFlags.Static
                     | BindingFlags.Public
                     | BindingFlags.NonPublic);
-            harmony.Patch(
-                target,
-                null,
-                null,
-                new HarmonyMethod(transpiler),
-                null);
+            Install(harmony, key, target, transpiler, false);
             Logging.Info(
                 "Patched "
                 + DataContainerTypeName
@@ -442,6 +470,20 @@ namespace MoreNetworkCapacity.Compatibility
                 + " expanded electricity length(s).");
         }
 
+        private static void Install(Harmony harmony, string key, MethodInfo target, MethodInfo patch, bool prefix)
+        {
+            if (patch == null) throw new InvalidOperationException("81 Tiles compatibility hook missing: " + key);
+            if (!prefix)
+            {
+                IEnumerable<CodeInstruction> original = PatchProcessor.GetOriginalInstructions(target, (ILGenerator)null);
+                if (patch.Name == "NodeLimitValidationTranspiler") new List<CodeInstruction>(NodeLimitValidationTranspiler(target, original));
+                else if (patch.Name == "DataContainerSerializeTranspiler") new List<CodeInstruction>(DataContainerSerializeTranspiler(original));
+                else new List<CodeInstruction>(DataContainerDeserializeTranspiler(original));
+            }
+            InstalledPatches.Add(new InstalledPatch { Target = target, Patch = patch, Key = key });
+            harmony.Patch(target, prefix ? new HarmonyMethod(patch) : null, null, prefix ? null : new HarmonyMethod(patch), null);
+            PatchedMethods.Add(key);
+        }
         private static void EnsureStaticArraysForArguments(
             object[] arguments,
             int firstPulseArrayIndex)
@@ -629,6 +671,7 @@ namespace MoreNetworkCapacity.Compatibility
                 null,
                 null);
             List<int> indexes = new List<int>();
+            if (helper == null) throw new InvalidOperationException("81 Tiles electricity length helper missing.");
             for (int i = 0; i < list.Count; ++i)
             {
                 if (IsInt32Constant(
@@ -649,7 +692,7 @@ namespace MoreNetworkCapacity.Compatibility
                     + ", found "
                     + indexes.Count
                     + ". Leaving values unchanged.");
-                return list;
+                throw new InvalidOperationException("81 Tiles electricity data-length pattern changed: " + label);
             }
 
             for (int i = 0; i < indexes.Count; ++i)
@@ -688,7 +731,7 @@ namespace MoreNetworkCapacity.Compatibility
                     + " node-limit pattern mismatch: expected 1, found "
                     + indexes.Count
                     + ". Leaving values unchanged.");
-                return list;
+                throw new InvalidOperationException("81 Tiles water node-limit pattern changed: " + label);
             }
 
             MethodInfo helper = typeof(Capacity).GetMethod(
@@ -706,7 +749,7 @@ namespace MoreNetworkCapacity.Compatibility
                     + "leaving EightyOne2 "
                     + label
                     + " unchanged.");
-                return list;
+                throw new InvalidOperationException("81 Tiles node validation helper missing.");
             }
 
             CodeInstruction instruction = list[indexes[0]];

@@ -14,15 +14,19 @@ namespace MoreNetworkCapacity.Compatibility
             NodeControllerCompatibility.Reset();
             TMPECompatibility.Reset();
             EightyOne2Compatibility.Reset();
+            ZoningAdjusterCompatibility.Reset();
             StaticBufferCompatibility.Reset();
         }
 
         internal static void ApplyAll(Harmony harmony)
         {
-            TryApply("TM:PE", delegate
+            TryApply("Third-party buffer references", delegate
             {
-                TMPECompatibility.Apply(harmony);
+                StaticBufferCompatibility.ApplyAll(harmony);
             });
+            // These postconditions protect expanded rules and split offsets.
+            // Failure during final loading must not be reported as a completed load.
+            TMPECompatibility.Apply(harmony);
             TryApply("Node Controller Renewal", delegate
             {
                 NodeControllerCompatibility.Apply(harmony);
@@ -43,10 +47,6 @@ namespace MoreNetworkCapacity.Compatibility
             {
                 ZoningAdjusterCompatibility.Apply();
             });
-            TryApply("Third-party buffer references", delegate
-            {
-                StaticBufferCompatibility.ApplyAll(harmony);
-            });
             TryApply("Final network color offsets", delegate
             {
                 // NetworkSkins can inject its own color-map instructions
@@ -60,6 +60,14 @@ namespace MoreNetworkCapacity.Compatibility
             // Required TM:PE range patches must not silently fail while the
             // expanded game continues loading or saving incompatible data.
             TMPECompatibility.ApplyEarly(harmony);
+            TryApply("EightyOne2 (early)", delegate
+            {
+                EightyOne2Compatibility.ApplyEarly(harmony);
+            });
+            TryApply("Zoning Adjuster (early)", delegate
+            {
+                ZoningAdjusterCompatibility.ApplyEarly(harmony);
+            });
             TryApply("NetworkSkins (early)", delegate
             {
                 NetworkSkinsCompatibility.Apply(harmony);
@@ -82,20 +90,28 @@ namespace MoreNetworkCapacity.Compatibility
             Harmony harmony,
             bool expandedSave)
         {
+            TryApply("Third-party network buffer refresh", delegate
+            {
+                StaticBufferCompatibility.ApplyAll(harmony);
+            });
             TryApply("NetworkSkins network-load preparation", delegate
             {
                 NetworkSkinsCompatibility.Apply(harmony);
             });
             TMPECompatibility.PrepareForNetworkDeserialize(harmony, expandedSave);
+            TryApply("EightyOne2 network-load preparation", delegate
+            {
+                EightyOne2Compatibility.ApplyEarly(harmony);
+            });
+            TryApply("Zoning Adjuster network-load preparation", delegate
+            {
+                ZoningAdjusterCompatibility.ApplyEarly(harmony);
+            });
             TryApply("AdaptiveRoads network-load preparation", delegate
             {
                 AdaptiveRoadsCompatibility.PrepareForNetworkDeserialize(
                     harmony,
                     expandedSave);
-            });
-            TryApply("Third-party network buffer refresh", delegate
-            {
-                StaticBufferCompatibility.ApplyAll(harmony);
             });
         }
 

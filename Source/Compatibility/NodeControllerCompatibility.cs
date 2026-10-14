@@ -15,6 +15,41 @@ namespace MoreNetworkCapacity.Compatibility
         private static bool _patchesApplied;
         private static bool _fromXmlPatched;
         private static bool _initialUpdatePatched;
+        private static readonly object BufferAccessorSync = new object();
+        private static volatile BufferAccessor _bufferAccessor;
+
+        private sealed class BufferAccessor
+        {
+            internal readonly Type Owner, Element;
+            internal readonly FieldInfo Field;
+            internal readonly Func<object, Array> Read;
+            internal BufferAccessor(Type owner, FieldInfo field)
+            {
+                Owner = owner;
+                Field = field;
+                if (field == null || !field.FieldType.IsArray || field.FieldType.GetArrayRank() != 1) return;
+                Element = field.FieldType.GetElementType();
+                try
+                {
+                    // Read the backing field directly, never the patched Buffer getter.
+                    DynamicMethod read = new DynamicMethod("MNC_ReadNodeControllerBuffer", typeof(Array),
+                        new[] { typeof(object) }, typeof(NodeControllerCompatibility).Module, true);
+                    ILGenerator il = read.GetILGenerator();
+                    il.Emit(OpCodes.Ldarg_0);
+                    il.Emit(OpCodes.Castclass, owner);
+                    il.Emit(OpCodes.Ldfld, field);
+                    il.Emit(OpCodes.Ret);
+                    Read = (Func<object, Array>)read.CreateDelegate(typeof(Func<object, Array>));
+                }
+                catch (Exception exception)
+                {
+                    // Runtime restrictions can refuse emission. Cache the metadata anyway.
+                    Logging.Warning("Node Controller direct buffer accessor unavailable; using cached reflection: "
+                        + exception.GetType().Name);
+                    Read = delegate(object manager) { return field.GetValue(manager) as Array; };
+                }
+            }
+        }
 
         internal static void Reset()
         {
@@ -22,6 +57,8 @@ namespace MoreNetworkCapacity.Compatibility
             _fromXmlPatched = false;
             _initialUpdatePatched = false;
             NodeControllerLoadUpdates.Reset();
+            NodeControllerFlagChecks.Reset();
+            lock (BufferAccessorSync) { _bufferAccessor = null; }
         }
 
         internal static void Apply(Harmony harmony)
@@ -36,6 +73,8 @@ namespace MoreNetworkCapacity.Compatibility
                     + "compatibility is inactive.");
                 return;
             }
+
+            NodeControllerFlagChecks.Apply(harmony, assembly);
 
             Type managerType = ThirdPartyCapacityCompatibility.FindType(
                 assembly,
@@ -243,25 +282,24 @@ namespace MoreNetworkCapacity.Compatibility
             try
             {
                 Type managerType = manager.GetType();
-                FieldInfo field =
-                    ThirdPartyCapacityCompatibility.FindBackingField(
-                        managerType,
-                        "Buffer")
-                    ?? ThirdPartyCapacityCompatibility.FindField(
-                        managerType,
-                        "Buffer");
-                if (field == null)
+                BufferAccessor accessor = _bufferAccessor;
+                if (accessor == null || accessor.Owner != managerType)
                 {
-                    return;
+                    lock (BufferAccessorSync)
+                    {
+                        accessor = _bufferAccessor;
+                        if (accessor == null || accessor.Owner != managerType)
+                        {
+                            FieldInfo field = ThirdPartyCapacityCompatibility.FindBackingField(managerType, "Buffer")
+                                ?? ThirdPartyCapacityCompatibility.FindField(managerType, "Buffer");
+                            _bufferAccessor = accessor = new BufferAccessor(managerType, field);
+                        }
+                    }
                 }
-
-                Type elementType = field.FieldType.GetElementType();
-                if (elementType == null)
-                {
-                    return;
-                }
-
-                Array previous = field.GetValue(manager) as Array;
+                if (accessor.Read == null) return;
+                // Every call reads the live array, so Clear/replacement on the same
+                // manager is still detected; manager identity is never a ready shortcut.
+                Array previous = accessor.Read(manager);
                 if (previous == null)
                 {
                     return;
@@ -284,10 +322,10 @@ namespace MoreNetworkCapacity.Compatibility
                 }
 
                 Array replacement =
-                    Array.CreateInstance(elementType, newLength);
+                    Array.CreateInstance(accessor.Element, newLength);
                 Array.Copy(previous, replacement, previous.Length);
 
-                field.SetValue(manager, replacement);
+                accessor.Field.SetValue(manager, replacement);
                 Logging.Info(
                     "Expanded Node Controller Renewal Manager.Buffer: "
                     + previous.Length
