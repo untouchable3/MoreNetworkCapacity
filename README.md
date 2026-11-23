@@ -28,6 +28,6 @@ When opening an issue, include the game and MNC versions, the steps that lead to
 
 - **Capacity and persistence.** Vanilla buffer sizes are 32,768 nodes and 36,864 segments. MNC expands both buffers to 65,024 entries, including reserved slots. The capacity stays below 65,536 so tools that iterate with a 16-bit unsigned index can terminate without wrapping. See [`Capacity.cs`](Source/Capacity.cs).
 - **Patches and adapters.** `Source/Patches` covers the game's network traversal, serialization, and rendering. `Source/Compatibility` contains adapters for individual mods. `Tools` contains IL inspection utilities and offline regression tests.
-- **Windows builds.** The repository's [`build.ps1`](build.ps1) requires a local Cities: Skylines installation, Harmony assemblies, and the .NET Framework 3.5 compiler. Set the game and dependency paths to match your Steam library. The public script still regenerates the patch target table from the older CSV, so its output may differ from the 1.3.0 build.
+- **Windows builds.** The repository's [`build.ps1`](build.ps1) requires a local Cities: Skylines installation, Harmony assemblies, and the .NET Framework 3.5 compiler. If your Steam library is elsewhere, set `MNC_STEAM_ROOT` to the folder containing `steamapps`. Run `powershell -NoProfile -File .\build.ps1` to generate and verify the patch targets, compile the mod, and assemble `dist/MoreNetworkCapacity`.
 
 This project uses AI-assisted development. Contributions are welcome under the [MIT License](LICENSE). See the [contribution guide](CONTRIBUTING.md).

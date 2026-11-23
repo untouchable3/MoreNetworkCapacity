@@ -28,6 +28,6 @@ MNC 已对 TM:PE、Node Controller Renewal、Intersection Marking Tool、Adaptiv
 
 - **路网容量与存档。** 原版节点和路段缓冲区分别为 32,768 和 36,864 项。MNC 将两者扩展到 65,024 项，其中包含保留槽位。容量低于 65,536，因此使用 16 位无符号索引的工具可以正常终止遍历，避免索引回绕。参见 [`Capacity.cs`](Source/Capacity.cs)。
 - **补丁与适配。** `Source/Patches` 处理游戏的路网遍历、存档和渲染，`Source/Compatibility` 包含各模组的适配，`Tools` 提供 IL 检查工具和离线回归测试。
-- **Windows 构建。** 仓库中的 [`build.ps1`](build.ps1) 需要本机游戏程序集、Harmony 程序集和 .NET Framework 3.5 编译器。请按实际 Steam 库位置调整依赖路径。公开脚本仍会根据旧版 CSV 重新生成补丁目标表，构建结果可能与 1.3.0 构建包不同。
+- **Windows 构建。** 仓库中的 [`build.ps1`](build.ps1) 需要本机游戏程序集、Harmony 程序集和 .NET Framework 3.5 编译器。Steam 库安装在其他位置时，将环境变量 `MNC_STEAM_ROOT` 设为包含 `steamapps` 的目录。运行 `powershell -NoProfile -File .\build.ps1`，脚本会生成并验证补丁目标、编译模组，并输出到 `dist/MoreNetworkCapacity`。
 
 本项目使用 AI 辅助开发，采用 [MIT 许可证](LICENSE)。欢迎通过 [贡献指南](CONTRIBUTING.md) 参与。

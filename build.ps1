@@ -11,18 +11,21 @@ if ($OutputDirectory -ne "") {
 }
 $artifactsDir = Join-Path $root "artifacts"
 
-$gameDir = Join-Path $env:ProgramFiles "Steam\steamapps\common\Cities_Skylines"
-if (-not (Test-Path $gameDir)) {
-    $gameDir = "D:\steam\steamapps\common\Cities_Skylines"
+$steamRoot = $env:MNC_STEAM_ROOT
+if ([string]::IsNullOrWhiteSpace($steamRoot)) {
+    $steamRoot = Join-Path $env:ProgramFiles "Steam"
 }
 
+$steamApps = Join-Path $steamRoot "steamapps"
+$gameDir = Join-Path $steamApps "common\Cities_Skylines"
+$workshopDir = Join-Path $steamApps "workshop\content\255710"
 $managedDir = Join-Path $gameDir "Cities_Data\Managed"
-$harmonyDll = "D:\steam\steamapps\workshop\content\255710\2040656402\CitiesHarmony.Harmony.dll"
-$harmonyApiDll = "D:\steam\steamapps\workshop\content\255710\2101551127\CitiesHarmony.API.dll"
+$harmonyDll = Join-Path $workshopDir "2040656402\CitiesHarmony.Harmony.dll"
+$harmonyApiDll = Join-Path $workshopDir "2101551127\CitiesHarmony.API.dll"
 $csc = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v3.5\csc.exe"
 
 if (-not (Test-Path $managedDir)) {
-    throw "Cities: Skylines managed directory not found: $managedDir"
+    throw "Cities: Skylines managed directory not found: $managedDir. Set MNC_STEAM_ROOT to the folder containing steamapps."
 }
 if (-not (Test-Path $harmonyDll)) {
     throw "CitiesHarmony.Harmony.dll not found: $harmonyDll"
