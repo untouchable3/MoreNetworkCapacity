@@ -2,6 +2,11 @@ using System;
 using System.Collections.Generic;
 using MoreNetworkCapacity;
 
+namespace MoreNetworkCapacity.Patches
+{
+    internal static class SaveListMetadataRefresh { internal static void Reset() { } }
+}
+
 namespace CitiesHarmony.API
 {
     internal static class HarmonyHelper

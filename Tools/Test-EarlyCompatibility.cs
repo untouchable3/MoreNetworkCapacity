@@ -13,6 +13,7 @@ namespace MoreNetworkCapacity
     internal static class Capacity
     {
         internal const int VanillaNodeCapacity = 32768, ExpandedNodeCapacity = 65024, ExpandedSegmentCapacity = 65024;
+        internal const int VanillaSegmentCapacity = 36864;
         internal static int NodeLoopLimit = 32768, SegmentLoopLimit = 36864;
         internal static int GetElectricityNodeGroupLength() { return 32768; }
         internal static int GetNodeIdValidationLimit() { return 65024; }

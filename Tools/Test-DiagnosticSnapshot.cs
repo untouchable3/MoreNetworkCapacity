@@ -65,21 +65,30 @@ namespace HarmonyLib
     }
     public static class Harmony { public static Patches GetPatchInfo(MethodBase method) { return new Patches(); } }
 }
+public static class BuildConfig { public static string applicationVersionFull { get { return "1.21.1-f9-fixture"; } } }
 public sealed class Buffer<T> { public T[] m_buffer = new T[65024]; }
 public struct NetNode { public void RefreshJunctionData() { } public void RenderInstance() { } public void PopulateGroupData() { } }
 public struct NetSegment { public void RenderInstance() { } }
 public sealed class NetManager { public Buffer<NetNode> m_nodes = new Buffer<NetNode>(); public Buffer<NetSegment> m_segments = new Buffer<NetSegment>(); public void UpdateColorMap() { } }
 public sealed class BuildingManager { public void UpdateColorMap() { } }
+public struct TransportLine { public void SimulationStep(ushort line) { } }
 public sealed class SimulationManager
 {
     public bool m_simulationPaused = true, m_forcedSimulationPause = true, m_hasActions = true, m_inSimulationStep = true;
+    public int m_simulationSpeed = 2;
     public uint m_currentFrameIndex = 123;
     public System.Threading.Thread m_simulationThread = System.Threading.Thread.CurrentThread;
 }
-public sealed class LoadingManager { public bool m_currentlyLoading, m_renderDataReady = true, m_simulationDataReady = true; }
+public sealed class LoadingManager { public bool m_currentlyLoading, m_loadingComplete = true, m_renderDataReady = true, m_simulationDataReady = true; }
 public class ToolManagerBase { private readonly ToolController m_properties = new ToolController(); }
 public sealed class ToolManager : ToolManagerBase { }
-public sealed class ToolController { public object m_currentTool = new NetManager(), m_nextTool; }
+public sealed class ToolController
+{
+    public object m_currentTool = new NetManager(), m_nextTool;
+    public int m_collidingDepth;
+    public ulong[] m_collidingSegments1 = new ulong[576], m_collidingSegments2 = new ulong[1016];
+    public ulong[] m_collidingBuildings1 = new ulong[768], m_collidingBuildings2 = new ulong[768];
+}
 public sealed class RenderManager
 {
     public static int OBJECT_COLORMAP_WIDTH = 512, OBJECT_COLORMAP_HEIGHT = 512;
@@ -91,7 +100,8 @@ namespace MoreNetworkCapacity
 {
     public class Mod { }
     internal static class BuildInfo { internal const string Version = "snapshot-test"; }
-    internal static class LoadStageJournal { internal static string LastStage = "stage-test", Status = "journal-test"; }
+    internal static class LoadStageJournal { internal static string LastStage = "stage-test", Status = "journal-test", CurrentReportPath = "stage-current-fixture"; }
+    internal static class ErrorReport { internal static string CurrentReportPath = "error-current-fixture"; }
     internal static class PatchState { internal static bool ExpansionEnabled = true, SaveExpanded = true; }
     internal static class NetManagerDeserializeState { internal static bool LoadingExpanded = false; }
     internal static class Capacity
@@ -114,6 +124,10 @@ internal static class DiagnosticSnapshotTests
             UnityEngine.Application.persistentDataPath = root;
             UnityEngine.Application.dataPath = root;
             DiagnosticBundleInput menu = DiagnosticSnapshot.Capture();
+            Check(menu.Summary.Contains("Cities: Skylines build: 1.21.1-f9-fixture")
+                && menu.Summary.Contains("Unity application version: game-test")
+                && menu.CurrentReportPaths.Length == 2 && menu.CurrentReportPaths[0] == "stage-current-fixture"
+                && menu.CurrentReportPaths[1] == "error-current-fixture", "Build and current report identities must remain distinct.");
             Check(menu.Summary.Contains("NetManager not present") && menu.Summary.Contains("RenderManager not present")
                 && !menu.Summary.Contains("Forbidden"), "Main-menu export must not create game managers");
             Check(!Directory.Exists(root) && menu.Mods.Contains("plugin-fixture") && menu.Patches.Contains("fixture-owner"),
@@ -134,14 +148,22 @@ internal static class DiagnosticSnapshotTests
             ColossalFramework.Singleton<ToolManager>.Value = new ToolManager();
             ColossalFramework.Singleton<ToolManager>.exists = true;
             DiagnosticBundleInput city = DiagnosticSnapshot.Capture();
+            Check(city.Patches.Contains("TransportLine.SimulationStep") && city.Patches.Contains("fixture-owner"),
+                "Transport simulation patch owners must be included in the on-demand snapshot");
             Check(texture.Reads == 8 && city.Summary.Contains("matches manager=True") && city.Summary.Contains("Node buffer=65024"),
                 "Live rendering capture must use only eight samples and identify global binding");
+            Check(city.Summary.Contains("m_simulationSpeed=2") && city.Summary.Contains("m_loadingComplete=True")
+                && !city.Summary.Contains("m_selectedSimulationSpeed="), "Actual selected-speed field and load-complete status required.");
             Check(city.Summary.Contains("m_simulationPaused=True") && city.Summary.Contains("m_forcedSimulationPause=True")
                 && city.Summary.Contains("m_hasActions=True") && city.Summary.Contains("Simulation thread=alive=True")
                 && simulation.m_simulationPaused && simulation.m_forcedSimulationPause,
                 "Pause snapshot must capture live state without changing it");
             Check(city.Summary.Contains("m_currentTool=NetManager") && city.Summary.Contains("m_nextTool=null"),
                 "Tool snapshot must read the controller stored in the private inherited field");
+            Check(city.Summary.Contains("m_collidingSegments1=array length=576")
+                && city.Summary.Contains("m_collidingSegments2=array length=1016")
+                && city.Summary.Contains("m_collidingBuildings1=array length=768"),
+                "Snapshot must report actual collision bitmap lengths, including mismatches");
             texture.FailRead = true;
             UnityEngine.Shader.Global = new UnityEngine.Texture();
             DiagnosticBundleInput partial = DiagnosticSnapshot.Capture();

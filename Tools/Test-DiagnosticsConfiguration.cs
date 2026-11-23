@@ -40,12 +40,35 @@ public static class DiagnosticsConfigurationTests
         Type bootstrap = mod.GetType("MoreNetworkCapacity.HarmonyBootstrap", true);
         IEnumerable patches = (IEnumerable)bootstrap.GetMethod("GetPatchTypes", statics).Invoke(null, null);
         bool deferredFound = false;
+        bool phaseFound = false, readStateFound = false, tlmReadStateFound = false;
+        bool saveListFound = false, afterSavingFound = false;
         foreach (Type patch in patches)
         {
             Check(!patch.Name.StartsWith("SimulationStepDiagnostics"), "core owner contains tracing patch");
             if (patch.Name == "DeferredLoopLimitActivationPatch") deferredFound = true;
+            if (patch.Name == "NodeSimulationPhasePatch") phaseFound = true;
+            if (patch.Name == "SimulationDataReadStatePatch") readStateFound = true;
+            if (patch.Name == "TLMStopStatisticsReadResetPatch") tlmReadStateFound = true;
+            if (patch.Name == "SaveListMetadataRefreshPatch") saveListFound = true;
+            if (patch.Name == "SaveListAfterSavingPatch") afterSavingFound = true;
         }
         Check(deferredFound, "functional first-frame activation lost");
+        Check(phaseFound && readStateFound, "required signal phase or incoming-read lifecycle patch excluded");
+        Check(tlmReadStateFound, "TLM statistics incoming-city reset patch excluded");
+        Check(saveListFound && afterSavingFound, "save-list repair missing from core patch discovery");
+        Type capacity = mod.GetType("MoreNetworkCapacity.Capacity", true);
+        FieldInfo nodeLimit = capacity.GetField("NodeLoopLimit");
+        object priorLimit = nodeLimit.GetValue(null);
+        try
+        {
+            foreach (int value in new[] { 32768, 65024, 32768 })
+            {
+                nodeLimit.SetValue(null, value);
+                Check((int)capacity.GetMethod("GetNodeSimulationPhaseDivisor").Invoke(null, null) == value,
+                    "built phase divisor does not follow live node scheduling");
+            }
+        }
+        finally { nodeLimit.SetValue(null, priorLimit); }
         diagnostics.GetField("_armed", statics).SetValue(null, 1);
         diagnostics.GetField("_enabled", statics).SetValue(null, 1);
         diagnostics.GetField("_completedFrames", statics).SetValue(null, 3);

@@ -1,10 +1,10 @@
 param(
-    [string]$AssemblyPath = "D:\steam\steamapps\common\Cities_Skylines\Cities_Data\Managed\Assembly-CSharp.dll",
+    [string]$AssemblyPath = "$(if ($env:MNC_STEAM_ROOT) { $env:MNC_STEAM_ROOT } else { Join-Path $env:ProgramFiles 'Steam' })\steamapps\common\Cities_Skylines\Cities_Data\Managed\Assembly-CSharp.dll",
     [string]$OutputPath = ""
 )
 
 $ErrorActionPreference = "Stop"
-$cecilPath = "D:\steam\steamapps\common\Cities_Skylines\Mono\lib\mono\2.0\Mono.Cecil.dll"
+$cecilPath = "$(if ($env:MNC_STEAM_ROOT) { $env:MNC_STEAM_ROOT } else { Join-Path $env:ProgramFiles 'Steam' })\steamapps\common\Cities_Skylines\Mono\lib\mono\2.0\Mono.Cecil.dll"
 
 Add-Type -Path $cecilPath
 

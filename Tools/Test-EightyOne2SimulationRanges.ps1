@@ -2,9 +2,9 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $testDir = Join-Path $projectRoot 'artifacts\smoke\eightyone-simulation-ranges'
 New-Item -ItemType Directory -Force -Path $testDir | Out-Null
-$managedDir = 'D:\steam\steamapps\common\Cities_Skylines\Cities_Data\Managed'
-$tilesDir = 'D:\steam\steamapps\workshop\content\255710\2862121823'
-$harmonyDir = 'D:\steam\steamapps\workshop\content\255710\2040656402'
+$managedDir = "$(if ($env:MNC_STEAM_ROOT) { $env:MNC_STEAM_ROOT } else { Join-Path $env:ProgramFiles 'Steam' })\steamapps\common\Cities_Skylines\Cities_Data\Managed"
+$tilesDir = "$(if ($env:MNC_STEAM_ROOT) { $env:MNC_STEAM_ROOT } else { Join-Path $env:ProgramFiles 'Steam' })\steamapps\workshop\content\255710\2862121823"
+$harmonyDir = "$(if ($env:MNC_STEAM_ROOT) { $env:MNC_STEAM_ROOT } else { Join-Path $env:ProgramFiles 'Steam' })\steamapps\workshop\content\255710\2040656402"
 $harmonyDll = Join-Path $harmonyDir 'CitiesHarmony.Harmony.dll'
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v3.5\csc.exe'
 $testExe = Join-Path $testDir 'EightyOne2SimulationRangeTests.exe'
@@ -16,6 +16,9 @@ foreach ($dll in @('Assembly-CSharp.dll', 'ColossalManaged.dll', 'UnityEngine.dl
 }
 Copy-Item -LiteralPath $harmonyDll -Destination $testDir -Force
 foreach ($file in @('Source\Patches\NetworkSimulationSlicePatch.cs',
+    'Source\Compatibility\EightyOne2WaterRecovery.cs',
+    'Source\Compatibility\EightyOne2ElectricityRecovery.cs',
+    'Source\Patches\NetworkLodRenderPatch.cs',
     'Source\Compatibility\EightyOne2SimulationRanges.cs', 'Tools\Test-EightyOne2SimulationRanges.cs')) {
     $compilerArgs += Join-Path $projectRoot $file
 }

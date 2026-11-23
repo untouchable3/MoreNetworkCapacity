@@ -1,11 +1,11 @@
 param(
-    [string]$LogPath = "D:\steam\steamapps\common\Cities_Skylines\Cities_Data\output_log.txt",
+    [string]$LogPath = "$(if ($env:MNC_STEAM_ROOT) { $env:MNC_STEAM_ROOT } else { Join-Path $env:ProgramFiles 'Steam' })\steamapps\common\Cities_Skylines\Cities_Data\output_log.txt",
     [string]$OutputPath = "",
     [int]$MinimumScore = 4
 )
 
 $ErrorActionPreference = "Stop"
-$cecilPath = "D:\steam\steamapps\common\Cities_Skylines\Mono\lib\mono\2.0\Mono.Cecil.dll"
+$cecilPath = "$(if ($env:MNC_STEAM_ROOT) { $env:MNC_STEAM_ROOT } else { Join-Path $env:ProgramFiles 'Steam' })\steamapps\common\Cities_Skylines\Mono\lib\mono\2.0\Mono.Cecil.dll"
 
 if (-not (Test-Path $cecilPath)) {
     throw "Mono.Cecil not found: $cecilPath"

@@ -27,12 +27,19 @@ internal static class DiagnosticArchiveTests
             Directory.CreateDirectory(reports);
             File.WriteAllText(Path.Combine(reports, "MNC-stage-test.txt"), "stage fixture");
             File.WriteAllText(Path.Combine(reports, "MNC-error-test.txt"), "error fixture");
+            File.SetLastWriteTimeUtc(Path.Combine(reports, "MNC-stage-test.txt"), DateTime.UtcNow.AddDays(-2));
+            File.WriteAllText(Path.Combine(reports, "MNC-stage-history1.txt"), "same-version previous process");
+            File.WriteAllText(Path.Combine(reports, "MNC-stage-history2.txt"), "another previous process");
+            File.SetLastWriteTimeUtc(Path.Combine(reports, "MNC-stage-history1.txt"), DateTime.UtcNow.AddHours(-1));
+            File.SetLastWriteTimeUtc(Path.Combine(reports, "MNC-stage-history2.txt"), DateTime.UtcNow);
             File.WriteAllText(Path.Combine(reports, "save.crp"), "must not export saves");
             DiagnosticBundleInput input = new DiagnosticBundleInput();
             input.OutputDirectory = Path.Combine(root, "exports");
             input.Summary = "summary 诊断 fixture"; input.Mods = "mods fixture"; input.Patches = "patch fixture";
             input.GameLogs = new[] { log, Path.Combine(root, "missing.log") };
             input.ReportDirectories = new[] { reports, reports, Path.Combine(root, "missing reports") };
+            string currentError = Path.Combine(reports, "MNC-error-current.txt");
+            input.CurrentReportPaths = new[] { Path.Combine(reports, "MNC-stage-test.txt"), currentError, null };
             string zip;
             using (FileStream liveLog = new FileStream(log, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite))
                 zip = DiagnosticBundleWriter.Write(input);
@@ -40,6 +47,25 @@ internal static class DiagnosticArchiveTests
                 "Only a completed bundle may receive the .zip name");
             Check(File.ReadAllText(Path.Combine(reports, "save.crp")) == "must not export saves",
                 "Source files must remain untouched");
+            File.WriteAllText(currentError, "current error fixture");
+            File.SetLastWriteTimeUtc(currentError, DateTime.UtcNow.AddDays(-2));
+            File.WriteAllText(Path.Combine(reports, "MNC-error-history-new.txt"), "same-version previous error");
+            string errorZip = DiagnosticBundleWriter.Write(input);
+            File.WriteAllText(Path.Combine(args[0], "current-errors-bundle.txt"), errorZip);
+            string previous = Path.Combine(root, "older.crp");
+            string latest = Path.Combine(root, "latest.crp");
+            File.WriteAllText(previous,"older");
+            byte[] payload = new byte[150001];
+            for (int i=0; i<payload.Length; i++) payload[i]=(byte)(i%251);
+            File.WriteAllBytes(latest,payload);
+            File.SetLastWriteTimeUtc(previous,DateTime.UtcNow.AddDays(-1));
+            input.SaveCandidates = new[]{latest,previous};
+            File.WriteAllText(Path.Combine(args[0],"attached.txt"),DiagnosticBundleWriter.Write(input));
+            Check(input.SaveIncluded,"Save not attached");
+            input.SaveIncluded = false;
+            using (FileStream busy = File.Open(latest,FileMode.Open,FileAccess.ReadWrite,FileShare.None))
+                File.WriteAllText(Path.Combine(args[0],"locked.txt"),DiagnosticBundleWriter.Write(input));
+            Check(!input.SaveIncluded,"Busy save attached");
             string bad = Path.Combine(root, "unsafe.zip");
             bool refused = false;
             using (DiagnosticArchive archive = new DiagnosticArchive(bad))

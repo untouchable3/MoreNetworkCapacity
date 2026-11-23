@@ -135,6 +135,20 @@ internal static class ErrorReportTests
             Check(!report.Contains("disabled error") && !report.Contains("disabled MNC error"), "Disabled reporter is silent");
             Check(Occurrences(report, "--- Error ") == 8, "Error budget survives disable/re-enable");
             Check(new FileInfo(files[0]).Length <= 262144, "Report size limit");
+            ErrorReport.Start();
+            var outer = ErrorReport.EnterSaveStep("simulation serializer");
+            var ok = ErrorReport.EnterSaveStep("network");
+            ErrorReport.LeaveSaveStep(ok, null);
+            var water = ErrorReport.EnterSaveStep("water");
+            UnityEngine.Application.Emit("third-party save failure", "OtherMod.Save", UnityEngine.LogType.Exception);
+            ErrorReport.LeaveSaveStep(water,new Exception("propagated failure"));
+            ErrorReport.LeaveSaveStep(outer,new Exception("outer failure"));
+            UnityEngine.Application.Emit("outside save", "OtherMod.Save", UnityEngine.LogType.Error);
+            WaitWriter(); ErrorReport.Stop();
+            report = File.ReadAllText(files[0]);
+            Check(report.Contains("Save stage: water") && report.Contains("Last completed in this step: network")
+                && report.Contains("third-party save failure") && !report.Contains("outside save")
+                && !report.Contains("propagated failure"), "Save scope after general error budget");
             Console.WriteLine("PASS: idle zero writes, unrelated-error filtering, duplicate suppression, escaped MNC error capture, bounded history/errors/file and lifecycle.");
             return 0;
         }

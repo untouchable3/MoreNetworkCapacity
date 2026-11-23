@@ -43,9 +43,33 @@ namespace MoreNetworkCapacity.Compatibility
         internal static void Retry(Harmony h) { }
     }
     internal class NetworkSkinsCompatibility : CompatBase { }
-    internal class NodeControllerCompatibility : CompatBase { }
+    internal class TMCECompatibility : CompatBase
+    {
+        internal static bool Fail;
+        internal new static void Apply(Harmony h) { if (Fail) throw new InvalidOperationException("bad required TMCE layout"); ++Calls; }
+    }
+    internal class TLMCompatibility : CompatBase
+    {
+        internal static bool Fail;
+        internal new static void Apply(Harmony h) { if (Fail) throw new InvalidOperationException("bad required TLM stats layout"); ++Calls; }
+    }
+    internal class NodeControllerCompatibility : CompatBase
+    {
+        internal static bool Fail;
+        internal new static void Apply(Harmony h) { if (Fail) throw new InvalidOperationException("bad required NC hooks"); ++Calls; }
+    }
+    internal class IntersectionMarkingCompatibility : CompatBase
+    {
+        internal static bool Fail;
+        internal new static void Apply(Harmony h) { if (Fail) throw new InvalidOperationException("bad required IMT ranges"); ++Calls; }
+    }
     internal class EightyOne2Compatibility : CompatBase
-    { internal static int EarlyCalls; internal static void ApplyEarly(Harmony h) { ++EarlyCalls; } }
+    {
+        internal static int EarlyCalls;
+        internal static bool Fail;
+        internal new static void Apply(Harmony h) { if (Fail) throw new InvalidOperationException("bad required 81 layout"); ++Calls; }
+        internal static void ApplyEarly(Harmony h) { if (Fail) throw new InvalidOperationException("bad required 81 early layout"); ++EarlyCalls; }
+    }
     internal class StaticBufferCompatibility : CompatBase
     {
         internal static int RefreshCalls;
@@ -90,6 +114,60 @@ public static class TMPEFailureGateTests
             ThirdPartyCapacityCompatibility.ApplyEarly(null);
             Check(EightyOne2Compatibility.EarlyCalls == 2 && ZoningAdjusterCompatibility.EarlyCalls == 2,
                 "Enable-time optional serialization hooks missing");
+            foreach (bool nc in new[] { true, false })
+            {
+                NodeControllerCompatibility.Fail = nc;
+                IntersectionMarkingCompatibility.Fail = !nc;
+                refused = false;
+                try { ThirdPartyCapacityCompatibility.ApplyEarly(null); } catch (InvalidOperationException) { refused = true; }
+                Check(refused, "Required NC/IMT enable failure swallowed");
+                refused = false;
+                try { ThirdPartyCapacityCompatibility.ApplyAll(null); } catch (InvalidOperationException) { refused = true; }
+                Check(refused, "Required NC/IMT final failure swallowed");
+            }
+            NodeControllerCompatibility.Fail = IntersectionMarkingCompatibility.Fail = false;
+            EightyOne2Compatibility.Fail = true;
+            foreach (int stage in new[] { 0, 1, 2 })
+            {
+                refused = false;
+                try
+                {
+                    if (stage == 0) ThirdPartyCapacityCompatibility.ApplyEarly(null);
+                    else if (stage == 1) ThirdPartyCapacityCompatibility.PrepareForNetworkDeserialize(null, true);
+                    else ThirdPartyCapacityCompatibility.ApplyAll(null);
+                }
+                catch (InvalidOperationException) { refused = true; }
+                Check(refused, "Required 81 layout failure swallowed");
+            }
+            EightyOne2Compatibility.Fail = false;
+            TLMCompatibility.Fail = true;
+            foreach (int stage in new[] { 0, 1, 2 })
+            {
+                refused = false;
+                try
+                {
+                    if (stage == 0) ThirdPartyCapacityCompatibility.ApplyEarly(null);
+                    else if (stage == 1) ThirdPartyCapacityCompatibility.PrepareForNetworkDeserialize(null, true);
+                    else ThirdPartyCapacityCompatibility.ApplyAll(null);
+                }
+                catch (InvalidOperationException) { refused = true; }
+                Check(refused, "Required TLM statistics layout failure swallowed");
+            }
+            TLMCompatibility.Fail = false;
+            TMCECompatibility.Fail = true;
+            foreach (int stage in new[] { 0, 1, 2 })
+            {
+                refused = false;
+                try
+                {
+                    if (stage == 0) ThirdPartyCapacityCompatibility.ApplyEarly(null);
+                    else if (stage == 1) ThirdPartyCapacityCompatibility.PrepareForNetworkDeserialize(null, true);
+                    else ThirdPartyCapacityCompatibility.ApplyAll(null);
+                }
+                catch (InvalidOperationException) { refused = true; }
+                Check(refused, "Required TMCE capacity failure swallowed");
+            }
+            TMCECompatibility.Fail = false;
             Console.WriteLine("PASS: actual dispatcher gates required TMPE enable/load/final failures, preserves vanilla flags/optional isolation and installs early serialization hooks.");
             return 0;
         }

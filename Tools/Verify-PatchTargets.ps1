@@ -1,5 +1,5 @@
 param(
-    [string]$AssemblyPath = "D:\steam\steamapps\common\Cities_Skylines\Cities_Data\Managed\Assembly-CSharp.dll",
+    [string]$AssemblyPath = "$(if ($env:MNC_STEAM_ROOT) { $env:MNC_STEAM_ROOT } else { Join-Path $env:ProgramFiles 'Steam' })\steamapps\common\Cities_Skylines\Cities_Data\Managed\Assembly-CSharp.dll",
     [string]$OccurrencesPath = ""
 )
 
@@ -10,7 +10,7 @@ if ([string]::IsNullOrWhiteSpace($OccurrencesPath)) {
     $OccurrencesPath = Join-Path $root "artifacts\patch-occurrences.csv"
 }
 
-$cecilPath = "D:\steam\steamapps\common\Cities_Skylines\Mono\lib\mono\2.0\Mono.Cecil.dll"
+$cecilPath = "$(if ($env:MNC_STEAM_ROOT) { $env:MNC_STEAM_ROOT } else { Join-Path $env:ProgramFiles 'Steam' })\steamapps\common\Cities_Skylines\Mono\lib\mono\2.0\Mono.Cecil.dll"
 $expectedHash =
     "DF557994A03C93D8BB4A14F80B1FBCC0FB29D547658442445D078D069BCDD9FE"
 

@@ -154,7 +154,9 @@ $lines.Add("        internal static readonly string[][] BranchBoundOccurrences =
 $lines.Add("            new string[][]")
 $lines.Add("            {")
 
-foreach ($row in $rows | Sort-Object MetadataToken, Index) {
+# CSV values are strings: lexical sorting would put instruction 152 before81,
+# breaking the correspondence between a semantic resolver and mixed node/segment rows.
+foreach ($row in $rows | Sort-Object @{ Expression = { [uint32]$_.MetadataToken } }, @{ Expression = { [int]$_.Index } }) {
     $token = ConvertTo-CSharpString $row.MetadataToken
     $index = ConvertTo-CSharpString $row.Index
     $ilOffset = ConvertTo-CSharpString $row.IlOffset

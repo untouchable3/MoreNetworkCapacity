@@ -4,7 +4,9 @@ using MoreNetworkCapacity;
 
 namespace MoreNetworkCapacity
 {
-    internal class DiagnosticBundleInput { }
+    namespace Diagnostics { internal static class RoadColorAnalyzer { internal static string Report; } }
+    internal class DiagnosticBundleInput { internal string RoadColorReport; internal bool SaveIncluded; }
+    internal static class LatestSaveAttachment { internal static void SelectCandidates(DiagnosticBundleInput input) { input.SaveIncluded = true; } }
     internal static class DiagnosticSnapshot
     {
         internal static bool FailCapture;

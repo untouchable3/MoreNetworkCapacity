@@ -1,44 +1,33 @@
-# More Network Capacity 1.1.1
+# More Network Capacity (MNC) 1.3.0
 
-提高 Cities: Skylines 1 的网络节点和路段容量，约为原版的两倍，并处理相关存档、渲染及第三方模组数据。需要 Harmony。
+[简体中文](README.zh-CN.md) · [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814019901) · [Report an issue](https://github.com/untouchable3/MoreNetworkCapacity/issues)
 
-Raises the network node and segment limits in Cities: Skylines 1 to roughly twice their vanilla capacity, with support for related save data, rendering, and third-party mod data. Requires Harmony.
+More Network Capacity raises the network node and segment limits in Cities: Skylines. It also adapts save handling, rendering, simulation, and supported third-party mods to the expanded network. [Harmony](https://steamcommunity.com/sharedfiles/filedetails/?id=2040656402) is required.
 
-目前提供容量或数据适配的模组包括 TM:PE、Node Controller Renewal、AdaptiveRoads、Network Skins、81 Tiles 2、Zoning Adjuster、Move It，以及使用 KianCommons 网络工具的模组。相关模组均为可选依赖，安装后自动检测适配。
+**Back up your city before enabling MNC.** Keep MNC enabled when loading a city that uses the expanded network. On some saves, the simulation can take more than ten minutes to start after loading.
 
-Capacity or data compatibility is provided for TM:PE, Node Controller Renewal, AdaptiveRoads, Network Skins, 81 Tiles 2, Zoning Adjuster, Move It, and mods using KianCommons network tools. These mods are optional and detected automatically.
+## What's new in 1.3.0
 
-**使用前请备份存档。使用扩展网络的存档，需要保持本模组启用。项目包含 AI 辅助生成的代码，仍可能存在未知问题。**
+Added compatibility for Improved Public Transport 2, 3, and 4 and extended support for several network tools. Fixed out-of-bounds errors in 81 Tiles 2 utility queues and incorrect colors on distant roads and race routes. Added the Network ID Inspector and Road Color Analyzer and reorganized the settings.
 
-**Back up your saves before use. Saves using expanded networks require this mod to remain enabled. This project includes AI-assisted code and may contain unknown issues.**
+## Compatibility
 
-[创意工坊页面 · Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814019901)
+MNC includes targeted compatibility for TM:PE, Node Controller Renewal, Intersection Marking Tool, Adaptive Roads, Network Skins, 81 Tiles 2, Zoning Adjuster, Move It, Transport Lines Manager, Transfer Manager CE, Direct Connect Roads, CSUR ToolBox, Network Multitool, SingleTrackAI, and Improved Public Transport 2, 3, and 4. It also adapts some network tools that use KianCommons.
 
-## 开发 · Development
+These mods are optional and detected at runtime. Each adaptation covers specific code paths. Check the **Compatibility** tab in the MNC options to see the detected mods and methods MNC has patched for your setup.
 
-当前公开源码为 1.1.1。运行缓冲区容量为 65024；兼容性适配并不意味着所有模组组合都已验证。
+## Diagnostics
 
-The public source is version 1.1.1. Runtime buffer capacity is 65024; compatibility support does not mean every mod combination has been tested.
+- **Network ID Inspector** shows IDs for nodes, segments, and transit stops. To inspect an underground stop, choose the matching transit line tool and hover over the stop.
+- **Road Color Analyzer** records material, texture, and rendering data. For a color change that follows the camera, use a single segment and mark the abnormal and recovered views. To compare two areas, keep the camera fixed and mark each segment's appearance.
+- **Diagnostic ZIP** is exported locally from **MNC options → Diagnostics**. It can include a generated color report and the most recently modified local save. Review the ZIP and uncheck the save option if a save is unnecessary for the report.
 
-本次更新 · Changes in this release:
+When opening an issue, include the game and MNC versions, the steps that lead to the problem, and the related mods. Attach a diagnostic ZIP when available.
 
-- 补齐 TM:PE 高 ID 工具标记、缓存、资产导出和遍历范围，并加强关键数组、缓存引用与道路/轨道车道连接的加载检查。Extends TM:PE high-ID tool markers, caches, asset exports and traversal ranges, and strengthens load-time checks for required arrays, cached references and road/track lane connections.
-- 修正 81 Tiles 的高 ID 电力、水等模拟范围与加载适配；修正 Zoning Adjuster 读档时丢失高 ID 路段分区设置的问题。Corrects 81 Tiles high-ID utility simulation ranges and loading compatibility, and preserves high-ID segment zoning settings when Zoning Adjuster loads saved data.
-- 减少 Node Controller 角点标志判断和缓冲区检查中的重复反射开销，保留数组替换及重置后的检查。Reduces repeated reflection in Node Controller corner flag checks and buffer validation, retaining checks after array replacement and reset.
-- 诊断 ZIP 增加暂停、线程、帧号、加载状态及当前工具信息，仅按按钮采集、本地导出，不自动上传。Adds pause, thread, frame, loading and current-tool state to diagnostic ZIPs; captured on demand and exported locally, with no automatic upload.
+## Development
 
-本地构建及专项检查通过；1.1.1 改动的完整游戏验证仍待完成，尚未量化性能提升。恢复高 ID 模拟会增加原先遗漏的计算量。
+- **Capacity and persistence.** Vanilla buffer sizes are 32,768 nodes and 36,864 segments. MNC expands both buffers to 65,024 entries, including reserved slots. The capacity stays below 65,536 so tools that iterate with a 16-bit unsigned index can terminate without wrapping. See [`Capacity.cs`](Source/Capacity.cs).
+- **Patches and adapters.** `Source/Patches` covers the game's network traversal, serialization, and rendering. `Source/Compatibility` contains adapters for individual mods. `Tools` contains IL inspection utilities and offline regression tests.
+- **Windows builds.** The repository's [`build.ps1`](build.ps1) requires a local Cities: Skylines installation, Harmony assemblies, and the .NET Framework 3.5 compiler. Set the game and dependency paths to match your Steam library. The public script still regenerates the patch target table from the older CSV, so its output may differ from the 1.3.0 build.
 
-Local builds and targeted checks passed; full in-game validation of the 1.1.1 changes remains pending, and performance gains have not been measured. Restoring high-ID simulation adds previously omitted work.
-
-Windows 构建需要本地 Cities: Skylines 1 游戏程序集、CitiesHarmony.Harmony.dll、CitiesHarmony.API.dll，以及 .NET Framework 3.5 编译器。依赖 DLL 不包含在仓库中。构建脚本和部分工具目前使用本地 Steam 路径；请先按你的安装位置调整。
-
-Building on Windows requires local Cities: Skylines 1 assemblies, CitiesHarmony.Harmony.dll, CitiesHarmony.API.dll, and the .NET Framework 3.5 compiler. Dependency DLLs are not included. The build script and some tools currently use local Steam paths; adjust them for your installation first.
-
-```powershell
-.\build.ps1
-```
-
-欢迎贡献 · Contributions welcome: [CONTRIBUTING.md](CONTRIBUTING.md)
-
-许可证 · License: [MIT](LICENSE)
+This project uses AI-assisted development. Contributions are welcome under the [MIT License](LICENSE). See the [contribution guide](CONTRIBUTING.md).

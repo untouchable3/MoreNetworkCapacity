@@ -103,6 +103,97 @@ public static class HighIdRangeTests
         }
         return method.CreateDelegate(delegateType);
     }
+    private static int[] Refreshed;
+    private static bool ValidRefresh(ushort segment) { return segment != 0; }
+    private static bool AdaptiveRefresh(NetInfo info) { return true; }
+    private static void UpdateRefresh(NetManager manager, ushort segment) { ++Refreshed[segment]; }
+    private static void IgnoreLog(object[] data) { }
+    private static NetManager NoManager() { return null; }
+    private static NetInfo RefreshInfo(ushort segment) { return null; }
+    private static Action CompileRefresh(MethodInfo target, List<CodeInstruction> code)
+    {
+        DynamicMethod method = new DynamicMethod("ActualARRefresh", typeof(void), Type.EmptyTypes, typeof(HighIdRangeTests).Module, true);
+        ILGenerator il = method.GetILGenerator();
+        foreach (LocalVariableInfo local in target.GetMethodBody().LocalVariables) il.DeclareLocal(local.LocalType);
+        Dictionary<Label, Label> labels = new Dictionary<Label, Label>();
+        foreach (CodeInstruction instruction in code)
+            foreach (Label label in instruction.labels) if (!labels.ContainsKey(label)) labels.Add(label, il.DefineLabel());
+        // Keep all actual loop/control-flow instructions. Stub only the
+        // external logger, validity/query and Unity update calls.
+        for (int position = 0; position < code.Count; ++position)
+        {
+            CodeInstruction c = code[position];
+            foreach (Label label in c.labels) il.MarkLabel(labels[label]);
+            MethodInfo call = c.operand as MethodInfo;
+            if (call != null)
+            {
+                string fake = call.Name == "Called" ? "IgnoreLog" : call.Name == "IsSegmentValid" ? "ValidRefresh"
+                    : call.Name == "IsAdaptive" ? "AdaptiveRefresh" : call.Name == "UpdateSegment" ? "UpdateRefresh"
+                    : call.Name == "get_instance" && call.ReturnType == typeof(NetManager) ? "NoManager" : null;
+                if (fake != null) { il.Emit(OpCodes.Call, typeof(HighIdRangeTests).GetMethod(fake, BindingFlags.Static | BindingFlags.NonPublic)); continue; }
+                if (call.Name == "ToSegment")
+                {
+                    Check(position + 1 < code.Count && ((MethodInfo)code[position + 1].operand).Name == "get_Info"
+                        && code[position + 1].labels.Count == 0, "Changed external segment-info fixture calls");
+                    il.Emit(OpCodes.Call, typeof(HighIdRangeTests).GetMethod("RefreshInfo", BindingFlags.Static | BindingFlags.NonPublic));
+                    ++position; continue;
+                }
+            }
+            if (c.operand == null) il.Emit(c.opcode);
+            else if (c.operand is Label) il.Emit(c.opcode, labels[(Label)c.operand]);
+            else if (c.operand is LocalBuilder) il.Emit(c.opcode, (LocalBuilder)c.operand);
+            else if (c.operand is LocalVariableInfo) il.Emit(c.opcode, (short)((LocalVariableInfo)c.operand).LocalIndex);
+            else if (c.operand is MethodInfo) il.Emit(c.opcode, (MethodInfo)c.operand);
+            else if (c.operand is Type) il.Emit(c.opcode, (Type)c.operand);
+            else if (c.operand is int) il.Emit(c.opcode, (int)c.operand);
+            else if (c.operand is sbyte) il.Emit(c.opcode, (sbyte)c.operand);
+            else throw new Exception("Unexpected actual AR refresh operand.");
+        }
+        return (Action)method.CreateDelegate(typeof(Action));
+    }
+    private static void TestRefresh(Assembly assembly)
+    {
+        foreach (string name in new[] { "PWSelector", "PWModifier" })
+        {
+            MethodInfo target = assembly.GetType("AdaptiveRoads.UI.Debug." + name, true).GetMethod("Refresh", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            DynamicMethod labels = new DynamicMethod("RefreshLabels", typeof(void), Type.EmptyTypes);
+            List<CodeInstruction> original = PatchProcessor.GetOriginalInstructions(target, labels.GetILGenerator());
+            List<CodeInstruction> patched = new List<CodeInstruction>(AdaptiveRoadsCompatibility.RefreshSegmentsTranspiler(target, Copy(original)));
+            int changed = 0, bound = -1;
+            for (int i = 0; i < original.Count; ++i)
+            {
+                if (original[i].opcode != patched[i].opcode || !object.Equals(original[i].operand, patched[i].operand)) { ++changed; bound = i; }
+                Check(original[i].labels.Count == patched[i].labels.Count && original[i].blocks.Count == patched[i].blocks.Count, "AR refresh lost metadata");
+            }
+            Check(changed == 1 && bound >= 0, "AR refresh altered unrelated operations");
+            Refreshed = new int[65024]; CompileRefresh(target, original)();
+            Check(Refreshed[1] == 1 && Refreshed[40000] == 0, "Original AR omission not reproduced");
+            Refreshed = new int[65024]; Capacity.SegmentLoopLimit = 65024; CompileRefresh(target, patched)();
+            Check(Refreshed[0] == 0, "Invalid zero segment updated");
+            for (int i = 1; i < Refreshed.Length; ++i) Check(Refreshed[i] == 1, "High adaptive segment skipped or repeated");
+            List<CodeInstruction> broken = Copy(original); broken[bound].operand = 36865;
+            RejectWithoutMutation(broken, delegate(List<CodeInstruction> il) { return new List<CodeInstruction>(AdaptiveRoadsCompatibility.RefreshSegmentsTranspiler(target, il)); });
+            broken = Copy(original); broken[bound - 1].opcode = OpCodes.Ldloc_1;
+            RejectWithoutMutation(broken, delegate(List<CodeInstruction> il) { return new List<CodeInstruction>(AdaptiveRoadsCompatibility.RefreshSegmentsTranspiler(target, il)); });
+            broken = Copy(original); broken[bound + 4].operand = labels.GetILGenerator().DefineLabel();
+            RejectWithoutMutation(broken, delegate(List<CodeInstruction> il) { return new List<CodeInstruction>(AdaptiveRoadsCompatibility.RefreshSegmentsTranspiler(target, il)); });
+            broken = Copy(original);
+            foreach (CodeInstruction c in broken)
+                if (c.operand is MethodInfo && ((MethodInfo)c.operand).Name == "UpdateSegment")
+                { c.operand = typeof(NetManager).GetMethod("UpdateNode", new[] { typeof(ushort) }); break; }
+            RejectWithoutMutation(broken, delegate(List<CodeInstruction> il) { return new List<CodeInstruction>(AdaptiveRoadsCompatibility.RefreshSegmentsTranspiler(target, il)); });
+            broken = Copy(original);
+            for (int i = 1; i < broken.Count; ++i)
+                if (broken[i].opcode == OpCodes.Stloc_0) { broken[i - 1].opcode = OpCodes.Ldc_I4_1; break; }
+            RejectWithoutMutation(broken, delegate(List<CodeInstruction> il) { return new List<CodeInstruction>(AdaptiveRoadsCompatibility.RefreshSegmentsTranspiler(target, il)); });
+            broken = Copy(original);
+            foreach (CodeInstruction c in broken) if (c.opcode == OpCodes.Conv_U2) { c.opcode = OpCodes.Conv_I4; break; }
+            RejectWithoutMutation(broken, delegate(List<CodeInstruction> il) { return new List<CodeInstruction>(AdaptiveRoadsCompatibility.RefreshSegmentsTranspiler(target, il)); });
+            List<CodeInstruction> safe = Copy(original); safe.InsertRange(bound, new[] { new CodeInstruction(OpCodes.Nop, null), new CodeInstruction(OpCodes.Nop, null) });
+            new List<CodeInstruction>(AdaptiveRoadsCompatibility.RefreshSegmentsTranspiler(target, safe));
+            Console.WriteLine("PASS actual AR " + name + ": all65023 valid adaptive IDs updated, unsafe graph refused and NOPs preserved.");
+        }
+    }
     private static void Run()
     {
         MethodInfo net = typeof(NetManager).GetMethod("SimulationStepImpl", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -144,6 +235,7 @@ public static class HighIdRangeTests
         }
 
         Assembly ar = Assembly.LoadFrom(Path.Combine(paths[2], "AdaptiveRoads.dll"));
+        TestRefresh(ar);
         foreach (string name in new string[] { "AdaptiveRoads.Manager.NetLaneExt", "AdaptiveRoads.Data.NetworkExtensions.LaneTransition" })
         {
             MethodInfo method = ar.GetType(name, true).GetMethod("GenerateRenderData");

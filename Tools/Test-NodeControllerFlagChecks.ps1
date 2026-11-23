@@ -2,9 +2,9 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $testDir = Join-Path $projectRoot 'artifacts\smoke\nc-flag-checks'
 New-Item -ItemType Directory -Force -Path $testDir | Out-Null
-$managedDir = 'D:\steam\steamapps\common\Cities_Skylines\Cities_Data\Managed'
-$ncDir = 'D:\steam\steamapps\workshop\content\255710\2472062376'
-$harmonyDir = 'D:\steam\steamapps\workshop\content\255710\2040656402'
+$managedDir = "$(if ($env:MNC_STEAM_ROOT) { $env:MNC_STEAM_ROOT } else { Join-Path $env:ProgramFiles 'Steam' })\steamapps\common\Cities_Skylines\Cities_Data\Managed"
+$ncDir = "$(if ($env:MNC_STEAM_ROOT) { $env:MNC_STEAM_ROOT } else { Join-Path $env:ProgramFiles 'Steam' })\steamapps\workshop\content\255710\2472062376"
+$harmonyDir = "$(if ($env:MNC_STEAM_ROOT) { $env:MNC_STEAM_ROOT } else { Join-Path $env:ProgramFiles 'Steam' })\steamapps\workshop\content\255710\2040656402"
 $harmonyDll = Join-Path $harmonyDir 'CitiesHarmony.Harmony.dll'
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v3.5\csc.exe'
 $testExe = Join-Path $testDir 'NodeControllerFlagTests.exe'

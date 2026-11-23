@@ -2,8 +2,8 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $testDir = Join-Path $projectRoot 'artifacts\smoke\network-buffer-sizes'
 New-Item -ItemType Directory -Force -Path $testDir | Out-Null
-$managedDir = 'D:\steam\steamapps\common\Cities_Skylines\Cities_Data\Managed'
-$harmonyDir = 'D:\steam\steamapps\workshop\content\255710\2040656402'
+$managedDir = "$(if ($env:MNC_STEAM_ROOT) { $env:MNC_STEAM_ROOT } else { Join-Path $env:ProgramFiles 'Steam' })\steamapps\common\Cities_Skylines\Cities_Data\Managed"
+$harmonyDir = "$(if ($env:MNC_STEAM_ROOT) { $env:MNC_STEAM_ROOT } else { Join-Path $env:ProgramFiles 'Steam' })\steamapps\workshop\content\255710\2040656402"
 $harmonyDll = Join-Path $harmonyDir 'CitiesHarmony.Harmony.dll'
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $testExe = Join-Path $testDir 'NetworkBufferSizeTests.exe'

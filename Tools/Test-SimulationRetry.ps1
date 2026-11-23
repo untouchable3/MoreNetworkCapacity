@@ -3,8 +3,8 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $testDir = Join-Path $projectRoot 'artifacts\smoke\simulation-retry'
 New-Item -ItemType Directory -Force -Path $testDir | Out-Null
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v3.5\csc.exe'
-$managedDir = 'D:\steam\steamapps\common\Cities_Skylines\Cities_Data\Managed'
-$harmonyDll = 'D:\steam\steamapps\workshop\content\255710\2040656402\CitiesHarmony.Harmony.dll'
+$managedDir = "$(if ($env:MNC_STEAM_ROOT) { $env:MNC_STEAM_ROOT } else { Join-Path $env:ProgramFiles 'Steam' })\steamapps\common\Cities_Skylines\Cities_Data\Managed"
+$harmonyDll = "$(if ($env:MNC_STEAM_ROOT) { $env:MNC_STEAM_ROOT } else { Join-Path $env:ProgramFiles 'Steam' })\steamapps\workshop\content\255710\2040656402\CitiesHarmony.Harmony.dll"
 $testExe = Join-Path $testDir 'SimulationRetryTests.exe'
 $compilerArgs = @('/nologo', '/target:exe', "/out:$testExe", "/reference:$harmonyDll")
 foreach ($dll in @('Assembly-CSharp.dll', 'ColossalManaged.dll', 'UnityEngine.dll')) {
