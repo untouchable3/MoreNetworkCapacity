@@ -74,20 +74,26 @@ namespace MoreNetworkCapacity.Compatibility
                 return;
             }
 
-            NodeControllerFlagChecks.Apply(harmony, assembly);
-
             Type managerType = ThirdPartyCapacityCompatibility.FindType(
                 assembly,
                 ManagerTypeName,
                 ModName);
             if (managerType == null)
             {
-                return;
+                throw new InvalidOperationException("Node Controller is loaded but its required Manager type is missing.");
             }
 
             if (!_patchesApplied)
             {
                 _patchesApplied = PatchManager(harmony, managerType);
+            }
+
+            // This optimization must not prevent the required buffer/load hooks.
+            try { NodeControllerFlagChecks.Apply(harmony, assembly); }
+            catch (Exception exception)
+            {
+                Logging.Warning("Node Controller corner flag optimization is unavailable; "
+                    + "required capacity hooks remain active: " + exception);
             }
 
             // Constructor patching only affects instances created afterwards.
@@ -101,14 +107,33 @@ namespace MoreNetworkCapacity.Compatibility
         {
             if (harmony == null)
             {
-                Logging.Warning(
-                    "Harmony is unavailable; Node Controller Renewal "
-                    + "compatibility is inactive.");
-                return false;
+                throw new InvalidOperationException("Harmony is unavailable for required Node Controller capacity hooks.");
             }
 
             try
             {
+                // Check the complete required surface before installing any hook.
+                FieldInfo bufferField = ThirdPartyCapacityCompatibility.FindBackingField(managerType, "Buffer")
+                    ?? ThirdPartyCapacityCompatibility.FindField(managerType, "Buffer");
+                ConstructorInfo requiredConstructor = managerType.GetConstructor(BindingFlags.Instance
+                    | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null);
+                MethodInfo requiredClear = managerType.GetMethod("Clear", BindingFlags.Instance
+                    | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null, Type.EmptyTypes, null);
+                MethodInfo requiredInitial = managerType.GetMethod("StartInitialUpdate", BindingFlags.Instance
+                    | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly, null,
+                    new[] { typeof(ushort[]), typeof(bool) }, null);
+                MethodInfo requiredFromXml = FindMethod(managerType, "FromXml", 3);
+                ParameterInfo[] xmlParameters = requiredFromXml == null ? null : requiredFromXml.GetParameters();
+                if (bufferField == null || bufferField.IsStatic || !bufferField.FieldType.IsArray
+                    || bufferField.FieldType.GetArrayRank() != 1 || bufferField.FieldType.GetElementType().IsValueType
+                    || requiredConstructor == null || requiredClear == null || requiredClear.ReturnType != typeof(void)
+                    || requiredInitial == null || requiredInitial.ReturnType != typeof(void)
+                    || requiredFromXml == null || requiredFromXml.ReturnType != typeof(void)
+                    || xmlParameters[0].ParameterType.FullName != "System.Xml.Linq.XElement"
+                    || xmlParameters[1].ParameterType.FullName != "ModsCommon.Utilities.NetObjectsMap"
+                    || xmlParameters[2].ParameterType != typeof(bool))
+                    throw new InvalidOperationException("Required Node Controller buffer/load method shape changed.");
+
                 MethodInfo ensurePrefix = typeof(NodeControllerPatches)
                     .GetMethod(
                         "EnsureManagerBufferPrefix",
@@ -239,10 +264,9 @@ namespace MoreNetworkCapacity.Compatibility
             }
             catch (Exception exception)
             {
-                Logging.Error(
-                    "Failed to patch Node Controller Renewal Manager: "
-                    + exception);
-                return false;
+                // The caller propagates required failures to bootstrap/load handling.
+                // In particular, do not log a successful pass after a partial install.
+                throw new InvalidOperationException("Failed to patch required Node Controller Manager hooks.", exception);
             }
         }
 
@@ -256,6 +280,7 @@ namespace MoreNetworkCapacity.Compatibility
                 | BindingFlags.Public
                 | BindingFlags.NonPublic
                 | BindingFlags.DeclaredOnly);
+            MethodInfo found = null;
             for (int i = 0; i < methods.Length; ++i)
             {
                 MethodInfo method = methods[i];
@@ -265,11 +290,12 @@ namespace MoreNetworkCapacity.Compatibility
                         StringComparison.Ordinal)
                     && method.GetParameters().Length == parameterCount)
                 {
-                    return method;
+                    if (found != null) throw new InvalidOperationException("Ambiguous Node Controller method: " + name);
+                    found = method;
                 }
             }
 
-            return null;
+            return found;
         }
 
         internal static void EnsureManagerBuffer(object manager)
@@ -361,27 +387,155 @@ namespace MoreNetworkCapacity.Compatibility
             NodeControllerCompatibility.EnsureManagerBuffer(__instance);
         }
 
-        public static void InitialUpdatePostfix(ushort[] __0, bool __1)
+        public static void InitialUpdatePostfix(ushort[] __0, bool __1, object __instance)
         {
             NodeControllerLoadUpdates.Capture(__0, __1);
+            if (!__1) return;
+            if (__0 == null || __0.Length == 0) { NodeControllerLoadUpdates.CaptureFinal(null); return; }
+            Type managerType = __instance.GetType();
+            Type options = managerType.GetNestedType("Options", BindingFlags.Public | BindingFlags.NonPublic);
+            FieldInfo state = managerType.GetField("InitialUpdateState", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            MethodInfo update = options == null ? null : managerType.GetMethod("Update", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                null, new[] { options, typeof(ushort[]) }, null);
+            if (update == null || state == null || Convert.ToInt32(Enum.Parse(options, "UpdateAll")) != 14)
+                throw new InvalidOperationException("Node Controller final update API changed.");
+            ushort[] nodes = (ushort[])__0.Clone();
+            object flags = Enum.ToObject(options, 14);
+            NodeControllerLoadUpdates.CaptureFinal(delegate
+            {
+                int phase = Convert.ToInt32(state.GetValue(null));
+                if (phase != 0 && phase != 2)
+                    throw new InvalidOperationException("Node Controller initial update has not completed.");
+                System.Diagnostics.Stopwatch timer = System.Diagnostics.Stopwatch.StartNew();
+                Logging.Info("Node Controller final geometry BEGIN; nodes=" + nodes.Length);
+                try
+                {
+                    update.Invoke(__instance, new object[] { flags, nodes });
+                    Logging.Info("Node Controller final geometry END; elapsedMs=" + timer.ElapsedMilliseconds
+                        + "; subsequent network work may still be pending.");
+                }
+                catch (Exception exception)
+                {
+                    Logging.Warning("Node Controller final geometry FAILED; elapsedMs=" + timer.ElapsedMilliseconds + "; " + exception);
+                    throw;
+                }
+            });
         }
 
         public static IEnumerable<CodeInstruction> FromXmlTranspiler(
             IEnumerable<CodeInstruction> instructions)
         {
-            foreach (CodeInstruction instruction in instructions)
+            List<CodeInstruction> code = new List<CodeInstruction>(instructions);
+            int match = -1, limits = 0, idSources = 0;
+            for (int i = 0; i < code.Count; ++i)
             {
-                if (instruction.opcode == OpCodes.Ldc_I4
-                    && instruction.operand is int
-                    && (int)instruction.operand
-                        == Capacity.VanillaNodeCapacity)
-                {
-                    instruction.operand =
-                        Capacity.ExpandedNodeCapacity - 1;
-                }
-
-                yield return instruction;
+                MethodInfo source = code[i].operand as MethodInfo;
+                if (source != null && source.Name == "GetAttrValue" && source.DeclaringType.FullName == "ModsCommon.Utilities.XmlExtension"
+                    && source.IsGenericMethod && source.GetGenericArguments().Length == 1
+                    && source.GetGenericArguments()[0] == typeof(ushort) && i >= 3
+                    && code[i - 3].opcode == OpCodes.Ldstr && object.Equals(code[i - 3].operand, "Id")) ++idSources;
+                if (code[i].opcode != OpCodes.Ldc_I4 || !object.Equals(code[i].operand, Capacity.VanillaNodeCapacity)) continue;
+                ++limits;
+                if (i < 15 || i + 10 >= code.Count) continue;
+                int id = Local(code[i - 1], false);
+                int input = i - 12;
+                source = code[input].operand as MethodInfo;
+                MethodInfo map = code[input + 5].operand as MethodInfo;
+                MethodInfo node = code[i + 3].operand as MethodInfo;
+                MethodInfo flags = code[i + 4].operand as MethodInfo;
+                int mappedId = AddressLocal(code[input + 4]);
+                if (id < 0 || source == null || code[input].opcode != OpCodes.Call
+                    || source.Name != "GetAttrValue" || source.DeclaringType.FullName != "ModsCommon.Utilities.XmlExtension"
+                    || !source.IsGenericMethod || source.GetGenericArguments().Length != 1
+                    || source.GetGenericArguments()[0] != typeof(ushort) || source.ReturnType != typeof(ushort)
+                    || source.GetParameters().Length != 4 || code[input - 3].opcode != OpCodes.Ldstr
+                    || !object.Equals(code[input - 3].operand, "Id") || code[input - 2].opcode != OpCodes.Ldc_I4_0
+                    || code[input - 1].opcode != OpCodes.Ldnull || Local(code[input + 1], true) != id
+                    || code[input + 2].opcode != OpCodes.Ldarg_2 || Local(code[input + 3], false) != id
+                    || mappedId < 0 || mappedId == id || !IdLocals(code, id, mappedId)
+                    || code[input + 5].opcode != OpCodes.Callvirt || !IsNodeMap(map)
+                    || !BranchTo(code[input + 6], code[i - 3])
+                    || Local(code[input + 7], false) != mappedId || Local(code[input + 8], true) != id
+                    || Local(code[i - 3], false) != id || !IsFalseBranch(code[i - 2])
+                    || (code[i + 1].opcode != OpCodes.Bgt && code[i + 1].opcode != OpCodes.Bgt_S)
+                    || !SameForwardTarget(code, code[i - 2].operand, code[i + 1].operand, i + 10)
+                    || Local(code[i + 2], false) != id || code[i + 3].opcode != OpCodes.Call
+                    || node == null || node.DeclaringType.FullName != "ModsCommon.Utilities.NetExtension" || node.Name != "GetNode"
+                    || node.GetParameters().Length != 1 || node.GetParameters()[0].ParameterType != typeof(ushort)
+                    || !node.ReturnType.IsByRef || node.ReturnType.GetElementType().FullName != "NetNode"
+                    || code[i + 4].opcode != OpCodes.Call || flags == null || flags.DeclaringType.FullName != "NetNode"
+                    || flags.Name != "get_flags" || code[i + 5].opcode != OpCodes.Ldc_I4_3
+                    || code[i + 6].opcode != OpCodes.Conv_I8 || code[i + 7].opcode != OpCodes.And
+                    || code[i + 8].opcode != OpCodes.Ldc_I4_1 || code[i + 9].opcode != OpCodes.Conv_I8
+                    || (code[i + 10].opcode != OpCodes.Beq && code[i + 10].opcode != OpCodes.Beq_S)) continue;
+                match = i;
             }
+            if (match < 0 || limits != 1 || idSources != 1)
+                throw new InvalidOperationException("Node Controller XML node-id source/remap/guard pattern changed.");
+            // NC Buffer always expands to65024, including vanilla-save loads.
+            // Keep the inclusive upper-ID guard and all branch/EH metadata intact.
+            code[match].operand = Capacity.ExpandedNodeCapacity - 1;
+            return code;
+        }
+
+        private static bool IsNodeMap(MethodInfo method)
+        {
+            if (method == null || method.Name != "TryGetNode" || method.ReturnType != typeof(bool)
+                || !method.DeclaringType.IsGenericType
+                || method.DeclaringType.GetGenericTypeDefinition().FullName != "ModsCommon.Utilities.NetObjectsMap`1"
+                || method.DeclaringType.GetGenericArguments()[0].FullName != "ModsCommon.Utilities.NetObjectId") return false;
+            ParameterInfo[] parameters = method.GetParameters();
+            return parameters.Length == 2 && parameters[0].ParameterType == typeof(ushort)
+                && parameters[1].ParameterType == typeof(ushort).MakeByRefType();
+        }
+        private static bool IdLocals(List<CodeInstruction> code, int id, int mapped)
+        {
+            int stores = 0;
+            foreach (CodeInstruction instruction in code)
+            {
+                LocalVariableInfo variable = instruction.operand as LocalVariableInfo;
+                if (variable != null && (variable.LocalIndex == id || variable.LocalIndex == mapped)
+                    && variable.LocalType != typeof(ushort)) return false;
+                if (Local(instruction, true) == id) ++stores;
+                if (AddressLocal(instruction) == id) return false;
+            }
+            return stores == 2;
+        }
+        private static bool IsFalseBranch(CodeInstruction instruction)
+        { return instruction.opcode == OpCodes.Brfalse || instruction.opcode == OpCodes.Brfalse_S; }
+        private static bool BranchTo(CodeInstruction branch, CodeInstruction destination)
+        {
+            return IsFalseBranch(branch) && branch.operand is Label
+                && destination.labels.Contains((Label)branch.operand);
+        }
+        private static bool SameForwardTarget(List<CodeInstruction> code, object left, object right, int after)
+        {
+            if (!(left is Label) || !(right is Label)) return false;
+            // Harmony can assign distinct labels to two branches at one IL offset.
+            for (int i = after + 1; i < code.Count; ++i)
+                if (code[i].labels.Contains((Label)left) && code[i].labels.Contains((Label)right)) return true;
+            return false;
+        }
+        private static int AddressLocal(CodeInstruction instruction)
+        {
+            if (instruction.opcode != OpCodes.Ldloca && instruction.opcode != OpCodes.Ldloca_S) return -1;
+            return OperandLocal(instruction.operand);
+        }
+        private static int Local(CodeInstruction instruction, bool store)
+        {
+            OpCode code = instruction.opcode;
+            if (code == (store ? OpCodes.Stloc_0 : OpCodes.Ldloc_0)) return 0;
+            if (code == (store ? OpCodes.Stloc_1 : OpCodes.Ldloc_1)) return 1;
+            if (code == (store ? OpCodes.Stloc_2 : OpCodes.Ldloc_2)) return 2;
+            if (code == (store ? OpCodes.Stloc_3 : OpCodes.Ldloc_3)) return 3;
+            return code == (store ? OpCodes.Stloc : OpCodes.Ldloc) || code == (store ? OpCodes.Stloc_S : OpCodes.Ldloc_S)
+                ? OperandLocal(instruction.operand) : -1;
+        }
+        private static int OperandLocal(object operand)
+        {
+            LocalVariableInfo local = operand as LocalVariableInfo;
+            if (local != null) return local.LocalIndex;
+            return operand is byte ? (byte)operand : operand is short ? (short)operand : operand is int ? (int)operand : -1;
         }
     }
 }

@@ -38,6 +38,7 @@ namespace MoreNetworkCapacity.Patches
 
             InitializeColorMap(manager.m_objectColorMap);
             QueueBuildingColorRefresh();
+            QueueEventColorRefresh();
         }
 
         internal static void EnsureCapacity()
@@ -241,6 +242,25 @@ namespace MoreNetworkCapacity.Patches
                 + "x"
                 + texture.height
                 + ".");
+        }
+
+        internal static void QueueEventColorRefresh()
+        {
+            if (Singleton<EventManager>.exists)
+                QueueEventColorRefresh(Singleton<EventManager>.instance);
+        }
+
+        private static readonly FieldInfo EventColorInitialized =
+            AccessTools.Field(typeof(EventManager), "m_colorUpdateInit");
+        private static readonly FieldInfo EventColorLock =
+            AccessTools.Field(typeof(EventManager), "m_colorUpdateLock");
+
+        private static void QueueEventColorRefresh(EventManager events)
+        {
+            // Awake schedules the first update itself if the manager is still initializing.
+            if (EventColorLock.GetValue(events) == null) return;
+            EventColorInitialized.SetValue(events, false);
+            events.UpdateEventRouteColors(0, Capacity.EventColorIndexCount - 1);
         }
 
         private static void QueueBuildingColorRefresh()

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Threading;
 using HarmonyLib;
 using UnityEngine;
@@ -55,6 +57,12 @@ namespace MoreNetworkCapacity.Patches
                         "RenderGroup.MeshData patched: "
                         + method
                         + ".");
+                    if (parameters[0].ParameterType == typeof(RenderGroup.MeshWrapper))
+                    {
+                        harmony.Patch(method, null, null, new HarmonyMethod(typeof(RenderGroupMeshDataPatch)
+                            .GetMethod("RewriteSplitUvs", BindingFlags.Static | BindingFlags.NonPublic)), null);
+                        Logging.Info("RenderGroup split meshes use chunk-relative UV4 coordinates.");
+                    }
                 }
                 catch (Exception exception)
                 {
@@ -62,7 +70,7 @@ namespace MoreNetworkCapacity.Patches
                         "RenderGroup.MeshData patch skipped for "
                         + method
                         + ": "
-                        + exception.GetType().Name
+                        + exception
                         + ".");
                 }
             }
@@ -75,6 +83,66 @@ namespace MoreNetworkCapacity.Patches
                 + ".");
 
             PatchMeshExtensionsSetUvs(harmony);
+        }
+
+        // The game builds a two-component slice, discards it and submits the
+        // entire four-component channel. Keep the mesh and channel arguments
+        // and replace that unused copy with a slice at the actual chunk start.
+        private static IEnumerable<CodeInstruction> RewriteSplitUvs(IEnumerable<CodeInstruction> instructions)
+        {
+            List<CodeInstruction> code = new List<CodeInstruction>(instructions);
+            FieldInfo uv = typeof(RenderGroup.MeshData).GetField("m_uvs4");
+            int guard = -1;
+            for (int i = 1; i + 1 < code.Count; i++)
+            {
+                if (code[i-1].opcode != OpCodes.Ldarg_0 || code[i].opcode != OpCodes.Ldfld
+                    || !Equals(code[i].operand, uv) || code[i+1].opcode != OpCodes.Brfalse) continue;
+                if (guard >= 0) throw new InvalidOperationException("Ambiguous split UV4 guard.");
+                guard = i+1;
+            }
+            if (guard < 0 || !(code[guard].operand is Label)) throw new InvalidOperationException("Missing split UV4 guard.");
+            int end = code.FindIndex(guard+1, delegate(CodeInstruction c) { return c.labels.Contains((Label)code[guard].operand); });
+            int start = guard+1;
+            int submit = end-1;
+            MethodInfo setUvs = submit >= 0 ? code[submit].operand as MethodInfo : null;
+            if (end-start != 34 || code[start].opcode != OpCodes.Ldloc_1 || code[start+1].opcode != OpCodes.Ldloc_0
+                || code[start+2].opcode != OpCodes.Sub || code[start+3].opcode != OpCodes.Ldc_I4_1
+                || code[start+4].opcode != OpCodes.Add || code[start+5].opcode != OpCodes.Newarr
+                || !Equals(code[start+5].operand, typeof(Vector2)) || !Equals(code[start+16].operand, uv)
+                || code[start+21].opcode != OpCodes.Stobj || !Equals(code[start+21].operand, typeof(Vector2))
+                || code[submit-4].opcode != OpCodes.Ldloc_3 || code[submit-3].opcode != OpCodes.Ldc_I4_3
+                || code[submit-2].opcode != OpCodes.Ldarg_0 || !Equals(code[submit-1].operand, uv)
+                || code[submit].opcode != OpCodes.Call || setUvs == null || setUvs.DeclaringType.Name != "MeshExtensions"
+                || setUvs.Name != "SetUVs")
+                throw new InvalidOperationException("Unexpected split UV4 copy or submission.");
+
+            // Preserve other transpilers' branch targets and exception regions.
+            HashSet<Label> removed = new HashSet<Label>();
+            for (int i = start; i < submit-4; i++)
+            {
+                if (code[i].blocks.Count != 0) throw new InvalidOperationException("Protected split UV4 copy.");
+                foreach (Label label in code[i].labels) removed.Add(label);
+            }
+            for (int i = 0; i < code.Count; i++)
+            {
+                if (i >= start && i < submit-4) continue;
+                object target = code[i].operand;
+                if (target is Label && removed.Contains((Label)target)
+                    || target is Label[] && Array.Exists((Label[])target, removed.Contains))
+                    throw new InvalidOperationException("External branch into split UV4 copy.");
+            }
+            code.InsertRange(submit, new[] { new CodeInstruction(OpCodes.Ldloc_0, null), new CodeInstruction(OpCodes.Ldloc_1, null),
+                new CodeInstruction(OpCodes.Call, typeof(RenderGroupMeshDataPatch).GetMethod("SliceUvs",
+                    BindingFlags.Static | BindingFlags.NonPublic)) });
+            code.RemoveRange(start, submit-4-start);
+            return code;
+        }
+
+        private static Vector4[] SliceUvs(Vector4[] source, int first, int last)
+        {
+            Vector4[] slice = new Vector4[last-first+1];
+            Array.Copy(source, first, slice, 0, slice.Length);
+            return slice;
         }
 
         private static void Prefix(object __instance)

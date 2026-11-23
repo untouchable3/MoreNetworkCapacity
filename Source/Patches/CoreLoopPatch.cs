@@ -52,6 +52,12 @@ namespace MoreNetworkCapacity.Patches
                 return list;
             }
 
+            if (!LoopLocalTypes.Agree(original, list))
+            {
+                Logging.Error("Local variable declarations do not match the reviewed method " + original.DeclaringType.FullName
+                    + "." + original.Name + ". Leaving this method unchanged.");
+                return list;
+            }
             int[] indexes = ResolveOccurrenceIndexes(
                 original,
                 list,
@@ -61,6 +67,12 @@ namespace MoreNetworkCapacity.Patches
                 return list;
             }
 
+            if (CinematicLoopBounds.Handles(original))
+            {
+                Logging.Info("Verified original UInt16 camera bounds in " + original.DeclaringType.FullName + "."
+                    + original.Name + "; preserving " + indexes.Length + " reviewed bounds.");
+                return list;
+            }
             FieldInfo nodeLimitField = AccessTools.Field(
                 typeof(Capacity),
                 "NodeLoopLimit");
@@ -106,21 +118,6 @@ namespace MoreNetworkCapacity.Patches
                         + ").");
                 }
 
-                if (HasNarrowingConversionBefore(list, index))
-                {
-                    Logging.Warning(
-                        "Skipping 16-bit bound in "
-                        + original.DeclaringType.FullName
-                        + "."
-                        + original.Name
-                        + " occurrence "
-                        + index
-                        + " (constant "
-                        + constant
-                        + ").");
-                    continue;
-                }
-
                 if (occurrence[4] == "node")
                 {
                     instruction.opcode = OpCodes.Ldsfld;
@@ -153,177 +150,88 @@ namespace MoreNetworkCapacity.Patches
             List<CodeInstruction> instructions,
             List<string[]> occurrences)
         {
-            int[] exactIndexes = new int[occurrences.Count];
-            bool exactMatch = true;
-            for (int i = 0; i < occurrences.Count; ++i)
+            if (CinematicLoopBounds.Handles(original) || TransportLifecycleLoopBounds.Handles(original)
+                || StationLaneLoopBounds.Handles(original) || EventRaceLoopBounds.Handles(original)
+                || NetManagerLoopBounds.Handles(original) || RoadAccessLoopBounds.Handles(original)
+                || ServicePathLoopBounds.Handles(original) || LaneChainLoopBounds.Handles(original)
+                || BuildingChainLoopBounds.Handles(original) || GridChainLoopBounds.Handles(original))
             {
-                int index;
-                int constant;
-                if (!int.TryParse(occurrences[i][1], out index)
-                    || !int.TryParse(occurrences[i][3], out constant)
-                    || index < 0
-                    || index >= instructions.Count
-                    || !IsInt32Constant(instructions[index], constant)
-                    || index + 1 >= instructions.Count
-                    || instructions[index + 1].opcode.FlowControl
-                        != FlowControl.Cond_Branch)
-                {
-                    exactMatch = false;
-                    break;
-                }
-
-                exactIndexes[i] = index;
+                int[] resolved;
+                if (CinematicLoopBounds.Handles(original)) resolved = CinematicLoopBounds.Resolve(original, instructions);
+                else if (TransportLifecycleLoopBounds.Handles(original)) resolved = TransportLifecycleLoopBounds.Resolve(original, instructions);
+                else if (StationLaneLoopBounds.Handles(original)) resolved = StationLaneLoopBounds.Resolve(original, instructions);
+                else if (EventRaceLoopBounds.Handles(original)) resolved = EventRaceLoopBounds.Resolve(original, instructions);
+                else if (NetManagerLoopBounds.Handles(original)) resolved = NetManagerLoopBounds.Resolve(original, instructions);
+                else if (RoadAccessLoopBounds.Handles(original)) resolved = RoadAccessLoopBounds.Resolve(original, instructions);
+                else if (ServicePathLoopBounds.Handles(original)) resolved = ServicePathLoopBounds.Resolve(original, instructions);
+                else if (LaneChainLoopBounds.Handles(original)) resolved = LaneChainLoopBounds.Resolve(original, instructions);
+                else if (BuildingChainLoopBounds.Handles(original)) resolved = BuildingChainLoopBounds.Resolve(original, instructions);
+                else resolved = GridChainLoopBounds.Resolve(original, instructions);
+                bool valid = resolved != null && resolved.Length == occurrences.Count;
+                if (valid)
+                    for (int i = 0; i < resolved.Length; ++i)
+                    {
+                        int constant;
+                        if (!int.TryParse(occurrences[i][3], out constant) || resolved[i] < 0
+                            || resolved[i] >= instructions.Count || (i > 0 && resolved[i] <= resolved[i - 1])
+                            || !IsInt32Constant(instructions[resolved[i]], constant)
+                            || (occurrences[i][4] != "node" && occurrences[i][4] != "segment")) valid = false;
+                    }
+                if (valid) return resolved;
+                Logging.Error("Could not resolve reviewed chain or pool guard for " + original.DeclaringType.FullName
+                    + "." + original.Name + ". Leaving this method unchanged.");
+                return null;
             }
-
-            if (exactMatch)
+            if (NetworkToolLoopBounds.Handles(original))
             {
-                return exactIndexes;
-            }
-
-            int[] fallbackIndexes = FindFallbackIndexes(
-                instructions,
-                occurrences);
-            if (fallbackIndexes != null)
-            {
-                Logging.Warning(
-                    "Using branch-bound fallback for "
-                    + original.DeclaringType.FullName
-                    + "."
-                    + original.Name
-                    + ".");
-            }
-            else
-            {
-                Logging.Error(
-                    "Could not resolve shifted loop occurrences for "
-                    + original.DeclaringType.FullName
-                    + "."
-                    + original.Name
-                    + ". Leaving this method unchanged.");
-            }
-
-            return fallbackIndexes;
-        }
-
-        private static int[] FindFallbackIndexes(
-            List<CodeInstruction> instructions,
-            List<string[]> occurrences)
-        {
-            Dictionary<string, List<string[]>> occurrenceGroups =
-                new Dictionary<string, List<string[]>>();
-            for (int i = 0; i < occurrences.Count; ++i)
-            {
-                string key = GetOccurrenceKey(occurrences[i]);
-                if (key == null)
-                {
-                    return null;
-                }
-
-                List<string[]> group;
-                if (!occurrenceGroups.TryGetValue(key, out group))
-                {
-                    group = new List<string[]>();
-                    occurrenceGroups.Add(key, group);
-                }
-                group.Add(occurrences[i]);
-            }
-
-            Dictionary<string[], int> resolved =
-                new Dictionary<string[], int>();
-            foreach (KeyValuePair<string, List<string[]>> pair
-                in occurrenceGroups)
-            {
-                List<string[]> group = pair.Value;
-                group.Sort(CompareOccurrences);
-
-                int constant = int.Parse(group[0][3]);
-                List<int> candidates = FindBranchBoundCandidates(
-                    instructions,
-                    constant);
-                if (candidates.Count != group.Count)
-                {
-                    return null;
-                }
-
-                for (int i = 0; i < group.Count; ++i)
-                {
-                    resolved.Add(group[i], candidates[i]);
-                }
-            }
-
-            int[] result = new int[occurrences.Count];
-            for (int i = 0; i < occurrences.Count; ++i)
-            {
-                if (!resolved.TryGetValue(occurrences[i], out result[i]))
-                {
-                    return null;
-                }
-            }
-
-            return result;
-        }
-
-        private static string GetOccurrenceKey(string[] occurrence)
-        {
-            int constant;
-            if (!int.TryParse(occurrence[3], out constant)
-                || (occurrence[4] != "node"
-                    && occurrence[4] != "segment"))
-            {
+                bool segment = original.DeclaringType == typeof(NetAdjust);
+                int[] tool = NetworkToolLoopBounds.Resolve(original, instructions);
+                if (tool != null && occurrences.Count == 1
+                    && occurrences[0][3] == (segment ? "36864" : "32768")
+                    && occurrences[0][4] == (segment ? "segment" : "node")) return tool;
+                Logging.Error("Could not resolve network tool traversal guard for " + original.DeclaringType.FullName
+                    + "." + original.Name + ". Leaving this method unchanged.");
                 return null;
             }
 
-            return occurrence[4] + ":" + constant;
-        }
-
-        private static int CompareOccurrences(
-            string[] left,
-            string[] right)
-        {
-            int leftIndex;
-            int rightIndex;
-            if (!int.TryParse(left[1], out leftIndex)
-                || !int.TryParse(right[1], out rightIndex))
+            if (TransportLineMaintenanceBounds.Handles(original))
             {
-                return string.CompareOrdinal(left[1], right[1]);
+                int[] maintenance = TransportLineMaintenanceBounds.Resolve(original, instructions);
+                if (maintenance != null && occurrences.Count == 1 && occurrences[0][3] == "32768"
+                    && occurrences[0][4] == "node") return maintenance;
+                Logging.Error("Could not resolve station maintenance guard for TransportLine." + original.Name + ". Leaving this method unchanged.");
+                return null;
             }
 
-            return leftIndex.CompareTo(rightIndex);
-        }
-
-        private static List<int> FindBranchBoundCandidates(
-            List<CodeInstruction> instructions,
-            int constant)
-        {
-            List<int> result = new List<int>();
-            for (int i = 0; i + 1 < instructions.Count; ++i)
+            if (original.DeclaringType == typeof(TransportLine) && original.Name == "CopyMissingPaths")
             {
-                if (IsInt32Constant(instructions[i], constant)
-                    && instructions[i + 1].opcode.FlowControl
-                        == FlowControl.Cond_Branch)
-                {
-                    result.Add(i);
-                }
+                int[] paired = TransportLineLoopBounds.ResolvePairedStops(instructions, original);
+                if (paired != null && occurrences.Count == 1 && occurrences[0][3] == "32768"
+                    && occurrences[0][4] == "node") return paired;
+                Logging.Error("Could not resolve paired station cursors for TransportLine.CopyMissingPaths. Leaving this method unchanged.");
+                return null;
             }
 
-            return result;
-        }
-
-        private static bool HasNarrowingConversionBefore(
-            List<CodeInstruction> instructions,
-            int index)
-        {
-            int start = Math.Max(0, index - 6);
-            for (int i = start; i < index; ++i)
+            int expectedSegments, expectedNextStops;
+            if (original.DeclaringType == typeof(TransportLine)
+                && TransportLineLoopBounds.TryGetReviewedShape(original.Name, out expectedSegments, out expectedNextStops))
             {
-                if (instructions[i].opcode == OpCodes.Conv_U2
-                    || instructions[i].opcode == OpCodes.Conv_I2)
-                {
-                    return true;
-                }
+                int expectedCount = expectedSegments + expectedNextStops;
+                List<int> guards = TransportLineLoopBounds.FindStopGuards(instructions, expectedSegments, expectedNextStops, original);
+                bool expected = occurrences.Count == expectedCount;
+                foreach (string[] occurrence in occurrences)
+                    if (occurrence[3] != "32768" || occurrence[4] != "node") expected = false;
+                if (expected && guards.Count == expectedCount) return guards.ToArray();
+                Logging.Error(
+                    "Could not resolve shifted loop occurrences for TransportLine." + original.Name + ". "
+                    + "Leaving this method unchanged. Verified stop guards=" + guards.Count
+                    + ", expected node guards=" + expectedCount + ".");
+                return null;
             }
 
-            return false;
+            Logging.Error("No reviewed semantic loop rule handles " + original.DeclaringType.FullName
+                + "." + original.Name + ". Leaving this method unchanged.");
+            return null;
         }
 
         private static List<string[]> GetOccurrences(
@@ -458,19 +366,31 @@ namespace MoreNetworkCapacity.Patches
                 if (i != 0)
                     result += ",";
 
-                string parameterName =
-                    parameters[i].ParameterType.FullName;
-                if (parameterName != null)
-                {
-                    // Mono.Cecil writes nested types with '/', while
-                    // runtime reflection writes them with '+'.
-                    parameterName = parameterName.Replace('+', '/');
-                }
-
-                result += parameterName;
+                result += GetCecilTypeName(parameters[i].ParameterType);
             }
 
             return result;
+        }
+
+        private static string GetCecilTypeName(Type type)
+        {
+            if (type.IsByRef) return GetCecilTypeName(type.GetElementType()) + "&";
+            if (type.IsPointer) return GetCecilTypeName(type.GetElementType()) + "*";
+            if (type.IsArray) return GetCecilTypeName(type.GetElementType())
+                + "[" + new string(',', type.GetArrayRank() - 1) + "]";
+            if (type.IsGenericParameter) return type.Name;
+            if (!type.IsGenericType) return (type.FullName ?? type.Name).Replace('+', '/');
+
+            // Reflection FullName uses assembly-qualified [[T, Assembly]] for
+            // closed generics; the reviewed Cecil signature uses Type<T>.
+            Type[] arguments = type.GetGenericArguments();
+            string name = type.GetGenericTypeDefinition().FullName.Replace('+', '/') + "<";
+            for (int i = 0; i < arguments.Length; ++i)
+            {
+                if (i != 0) name += ",";
+                name += GetCecilTypeName(arguments[i]);
+            }
+            return name + ">";
         }
 
         private static bool IsInt32Constant(

@@ -53,6 +53,7 @@ namespace MoreNetworkCapacity
         private static void RollBack()
         {
             PatchState.MarkDisabled();
+            SaveListMetadataRefresh.Reset();
             NetManagerCustomizer.CancelDeferredLoopLimitActivation();
             try
             {
@@ -66,6 +67,7 @@ namespace MoreNetworkCapacity
                     // unsafe reinstallation over residual patches.
                     _harmony.UnpatchAll(HarmonyId);
                     _harmony = null;
+                    RenderManagerAwakePatch.QueueEventColorRefresh();
                 }
                 ThirdPartyCapacityCompatibility.Reset();
                 NetworkColorOffsetPatch.ResetFinalPass();
@@ -92,6 +94,13 @@ namespace MoreNetworkCapacity
 
                 LoadStageJournal.Record("enable: before Harmony creation and patch discovery");
                 _harmony = new Harmony(HarmonyId);
+                // On a menu enable the game can already have run RenderManager.Awake.
+                // Reserve storage before installing any consumers of the expanded layout.
+                if (ColossalFramework.Singleton<RenderManager>.exists)
+                {
+                    stage = "existing renderer color storage";
+                    RenderManagerAwakePatch.EnsureCapacity();
+                }
                 List<Type> patchTypes = GetPatchTypes();
                 int applied = 0;
                 for (int i = 0; i < patchTypes.Count; ++i)
@@ -111,6 +120,7 @@ namespace MoreNetworkCapacity
                 stage = "render group compatibility";
                 LoadStageJournal.Record("enable: " + stage);
                 RenderGroupMeshDataPatch.Apply(_harmony);
+                RenderManagerAwakePatch.QueueEventColorRefresh();
                 stage = "early compatibility";
                 LoadStageJournal.Record("enable: " + stage);
                 ThirdPartyCapacityCompatibility.ApplyEarly(_harmony);

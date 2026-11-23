@@ -53,6 +53,7 @@ namespace MoreNetworkCapacity.Patches
 
             if (expandedNow)
             {
+                ToolCollisionBuffers.EnsureLoadedController();
                 LoadStageJournal.Record("load: before network deserialize compatibility");
                 ThirdPartyCapacityCompatibility.PrepareForNetworkDeserialize(
                     HarmonyBootstrap.HarmonyInstance,
@@ -100,6 +101,7 @@ namespace MoreNetworkCapacity.Patches
             LoadStageJournal.Record("load: before network free-list rebuild");
             NetManagerCustomizer.RebuildFreeLists(manager);
             NetManagerCustomizer.UpdateLoopLimitsForLoadedData(manager);
+            TMCECompatibility.AfterNetworkDeserialize();
             LoadStageJournal.Record("load: network post-read preparation completed");
         }
 

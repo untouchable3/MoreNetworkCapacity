@@ -61,15 +61,24 @@ namespace MoreNetworkCapacity.Patches
         }
     }
 
-    [HarmonyPatch(typeof(AsyncTask), "Execute")]
+    [HarmonyPatch]
     internal static class SimulationStepDiagnosticsAsyncTaskPatch
     {
-        private static void Prefix(AsyncTask __instance)
+        private static System.Reflection.MethodBase[] TargetMethods()
+        {
+            return new System.Reflection.MethodBase[]
+            {
+                AccessTools.DeclaredMethod(typeof(AsyncTask), "Execute", null, null),
+                AccessTools.DeclaredMethod(typeof(AsyncAction), "Execute", null, null)
+            };
+        }
+
+        private static void Prefix(AsyncTaskBase __instance)
         {
             SimulationStepDiagnostics.RecordAsyncTaskEnter(__instance);
         }
 
-        private static void Postfix(AsyncTask __instance)
+        private static void Postfix(AsyncTaskBase __instance)
         {
             SimulationStepDiagnostics.RecordAsyncTaskExit(__instance);
         }

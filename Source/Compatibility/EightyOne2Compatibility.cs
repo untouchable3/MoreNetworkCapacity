@@ -107,6 +107,16 @@ namespace MoreNetworkCapacity.Compatibility
                 "DataContainerDeserializeTranspiler",
                 2);
             PatchWaterReadValidation(harmony);
+            MethodInfo liveReads = typeof(EightyOne2PulseBuffers).GetMethod("Rewrite", BindingFlags.Static | BindingFlags.NonPublic);
+            foreach (MethodInfo target in EightyOne2PulseBuffers.Targets(_assembly))
+            {
+                string key = "liveBuffers:" + target.DeclaringType.FullName + "." + target.Name;
+                if (PatchedMethods.Contains(key)) continue;
+                InstalledPatches.Add(new InstalledPatch { Target = target, Patch = liveReads, Key = key });
+                // Run after the existing phase and recovery transpilers, which match the original field reads.
+                harmony.Patch(target, null, null, new HarmonyMethod(liveReads) { priority = Priority.Last }, null);
+                PatchedMethods.Add(key);
+            }
             EightyOne2SimulationRanges.Apply(harmony, _assembly);
             }
             catch
@@ -367,6 +377,14 @@ namespace MoreNetworkCapacity.Compatibility
                 | BindingFlags.Public
                 | BindingFlags.NonPublic);
             Install(harmony, key, target, prefix, true);
+            if (methodName == "CustomSerialize")
+            {
+                MethodInfo capture = AccessTools.Method(typeof(Patches.SaveFailureDiagnostics), "TilesFailure", null, null);
+                string failureKey = key + "|failure";
+                InstalledPatches.Add(new InstalledPatch { Target = target, Patch = capture, Key = failureKey });
+                harmony.Patch(target, null, null, null, new HarmonyMethod(capture));
+                PatchedMethods.Add(failureKey);
+            }
             Logging.Info(
                 "Patched EightyOne2."
                 + type.Name

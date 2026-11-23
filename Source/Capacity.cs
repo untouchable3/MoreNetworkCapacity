@@ -42,6 +42,13 @@ namespace MoreNetworkCapacity
         public static int SegmentLoopLimit = VanillaSegmentCapacity;
         public static int NodeStorageSize = VanillaNodeCapacity;
 
+        // NetManager schedules NodeLoopLimit / 256 nodes each frame. Signal
+        // readers must subtract that same node phase before selecting a bank.
+        public static int GetNodeSimulationPhaseDivisor()
+        {
+            return NodeLoopLimit;
+        }
+
         public static int GetNodeBufferLength()
         {
             NetManager manager = Singleton<NetManager>.instance;
@@ -121,24 +128,19 @@ namespace MoreNetworkCapacity
 
         public static int GetNodeColorIndexBase()
         {
-            int segmentCapacity = SegmentLoopLimit;
-            if (segmentCapacity < VanillaSegmentCapacity)
-            {
-                segmentCapacity = VanillaSegmentCapacity;
-            }
-
-            return SegmentColorIndexBase + segmentCapacity;
+            // The renderer reserves the full atlas in Awake. Mesh UVs can be
+            // cached before the simulation switches from vanilla to expanded limits.
+            return SegmentColorIndexBase + ExpandedSegmentCapacity;
         }
 
         public static int GetEventColorIndexBase()
         {
-            int nodeCapacity = NodeLoopLimit;
-            if (nodeCapacity < VanillaNodeCapacity)
-            {
-                nodeCapacity = VanillaNodeCapacity;
-            }
+            return GetNodeColorIndexBase() + ExpandedNodeCapacity;
+        }
 
-            return GetNodeColorIndexBase() + nodeCapacity;
+        public static int GetRaceRoadColorIndex()
+        {
+            return GetEventColorIndexBase() + 256;
         }
 
         // AdaptiveRoads serializes one record for every expanded node,

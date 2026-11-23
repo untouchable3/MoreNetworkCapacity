@@ -428,6 +428,10 @@ namespace MoreNetworkCapacity.Compatibility
             PatchMethod(harmony, ThirdPartyCapacityCompatibility.FindType(
                 assembly, "AdaptiveRoads.Data.NetworkExtensions.LaneTransition", ModName),
                 "GenerateRenderData", 2, "TrackNodeColorsTranspiler");
+            foreach (string name in new[] { "PWSelector", "PWModifier" })
+                PatchMethod(harmony, ThirdPartyCapacityCompatibility.FindType(
+                    assembly, "AdaptiveRoads.UI.Debug." + name, ModName),
+                    "Refresh", Type.EmptyTypes, "RefreshSegmentsTranspiler");
 
             if (PatchedMethods.Count == 0)
             {
@@ -1021,6 +1025,113 @@ namespace MoreNetworkCapacity.Compatibility
             IEnumerable<CodeInstruction> instructions)
         {
             return ReplaceLimits(instructions, true, true);
+        }
+
+        internal static int RefreshSegmentCount()
+        {
+            int count = Capacity.SegmentLoopLimit;
+            if (count != Capacity.VanillaSegmentCapacity && count != Capacity.ExpandedSegmentCapacity)
+                throw new InvalidOperationException("Unsupported Adaptive Roads segment refresh capacity: " + count);
+            return count;
+        }
+
+        public static IEnumerable<CodeInstruction> RefreshSegmentsTranspiler(MethodBase original, IEnumerable<CodeInstruction> instructions)
+        {
+            if (original == null || original.DeclaringType == null || original.Name != "Refresh"
+                || !original.IsStatic || original.GetParameters().Length != 0
+                || ((MethodInfo)original).ReturnType != typeof(void)
+                || (original.DeclaringType.FullName != "AdaptiveRoads.UI.Debug.PWSelector"
+                    && original.DeclaringType.FullName != "AdaptiveRoads.UI.Debug.PWModifier"))
+                throw new InvalidOperationException("Unexpected Adaptive Roads segment refresh target.");
+            List<CodeInstruction> list = new List<CodeInstruction>(instructions);
+            List<CodeInstruction> code = new List<CodeInstruction>(); List<int> map = new List<int>(); List<Label> pending = new List<Label>();
+            for (int i = 0; i < list.Count; ++i)
+            {
+                if (list[i].opcode == OpCodes.Nop) { pending.AddRange(list[i].labels); continue; }
+                CodeInstruction copy = new CodeInstruction(list[i]); copy.labels.AddRange(pending); pending.Clear(); code.Add(copy); map.Add(i);
+            }
+            // This small UI action has one complete loop: a valid adaptive
+            // segment queues UpdateSegment, and all skip branches join its
+            // UInt16 increment. Match the entire graph, including zero seed,
+            // validity/adaptive tests, update arguments and the bounded exit.
+            if (code.Count != 39 || !RefreshLocalsAgree(original, code))
+                throw new InvalidOperationException("Adaptive Roads refresh body/local layout changed.");
+            int counter = RefreshLocal(code[4], false), valid = RefreshLocal(code[10], false), adaptive = RefreshLocal(code[20], false), condition = RefreshLocal(code[35], false);
+            IList<LocalVariableInfo> locals = original.GetMethodBody().LocalVariables;
+            Type netUtil = original.DeclaringType.Assembly.GetType("KianCommons.NetUtil", false);
+            Type api = original.DeclaringType.Assembly.GetType("AdaptiveRoads.API", false);
+            Type log = original.DeclaringType.Assembly.GetType("KianCommons.Log", false);
+            Type singletonType = typeof(ColossalFramework.Plugins.PluginManager).Assembly.GetType("ColossalFramework.Singleton`1", true).MakeGenericType(typeof(NetManager));
+            MethodInfo singleton = singletonType.GetProperty("instance").GetGetMethod();
+            if (counter < 0 || valid < 0 || adaptive < 0 || condition < 0 || netUtil == null || api == null || log == null
+                || locals[counter].LocalType != typeof(ushort) || locals[valid].LocalType != typeof(bool)
+                || locals[adaptive].LocalType != typeof(bool) || locals[condition].LocalType != typeof(bool)
+                || !RefreshConstant(code[0], 0) || code[1].opcode != OpCodes.Newarr || code[1].operand as Type != typeof(object)
+                || !RefreshCall(code[2], log, "Called", typeof(void), new[] { typeof(object[]) })
+                || !RefreshConstant(code[3], 0) || !RefreshJump(code, 5, 32, OpCodes.Br, OpCodes.Br_S)
+                || !RefreshCall(code[7], netUtil, "IsSegmentValid", typeof(bool), new[] { typeof(ushort) })
+                || !RefreshConstant(code[8], 0) || code[9].opcode != OpCodes.Ceq || RefreshLocal(code[11], true) != valid
+                || !RefreshJump(code, 12, 14, OpCodes.Brfalse, OpCodes.Brfalse_S) || !RefreshJump(code, 13, 27, OpCodes.Br, OpCodes.Br_S)
+                || !RefreshCall(code[15], netUtil, "ToSegment", typeof(NetSegment).MakeByRefType(), new[] { typeof(ushort) })
+                || !RefreshCall(code[16], typeof(NetSegment), "get_Info", typeof(NetInfo), Type.EmptyTypes)
+                || !RefreshCall(code[17], api, "IsAdaptive", typeof(bool), new[] { typeof(NetInfo) })
+                || !RefreshConstant(code[18], 0) || code[19].opcode != OpCodes.Ceq || RefreshLocal(code[21], true) != adaptive
+                || !RefreshJump(code, 22, 24, OpCodes.Brfalse, OpCodes.Brfalse_S) || !RefreshJump(code, 23, 27, OpCodes.Br, OpCodes.Br_S)
+                || code[24].opcode != OpCodes.Call || !singleton.Equals(code[24].operand)
+                || code[26].opcode != OpCodes.Callvirt || !typeof(NetManager).GetMethod("UpdateSegment", new[] { typeof(ushort) }).Equals(code[26].operand)
+                || !RefreshConstant(code[28], 1) || code[29].opcode != OpCodes.Add || code[30].opcode != OpCodes.Conv_U2
+                || RefreshLocal(code[31], false) != counter || !RefreshConstant(code[33], Capacity.VanillaSegmentCapacity)
+                || code[34].opcode != OpCodes.Clt || RefreshLocal(code[36], true) != condition
+                || !RefreshJump(code, 37, 6, OpCodes.Brtrue, OpCodes.Brtrue_S) || code[38].opcode != OpCodes.Ret)
+                throw new InvalidOperationException("Adaptive Roads adaptive-segment refresh graph changed.");
+            foreach (int read in new[] { 6, 14, 25, 27, 32 })
+                if (RefreshLocal(code[read], true) != counter) throw new InvalidOperationException("Adaptive Roads refresh cursor changed.");
+            MethodInfo helper = AccessTools.Method(typeof(AdaptiveRoadsCompatibility), "RefreshSegmentCount", null, null);
+            list[map[33]].opcode = OpCodes.Call; list[map[33]].operand = helper;
+            return list;
+        }
+
+        private static bool RefreshConstant(CodeInstruction instruction, int value)
+        {
+            if (value == 0 && instruction.opcode == OpCodes.Ldc_I4_0 || value == 1 && instruction.opcode == OpCodes.Ldc_I4_1) return true;
+            return IsInt32Constant(instruction, value);
+        }
+        private static bool RefreshCall(CodeInstruction instruction, Type type, string name, Type result, Type[] parameters)
+        {
+            MethodInfo method = instruction.operand as MethodInfo;
+            if (instruction.opcode != OpCodes.Call || method == null || method.DeclaringType != type || method.IsStatic != (type != typeof(NetSegment)) || method.Name != name || method.ReturnType != result) return false;
+            ParameterInfo[] args = method.GetParameters(); if (args.Length != parameters.Length) return false;
+            for (int i = 0; i < args.Length; ++i) if (args[i].ParameterType != parameters[i]) return false;
+            return true;
+        }
+        private static bool RefreshJump(List<CodeInstruction> code, int from, int target, OpCode longForm, OpCode shortForm)
+        {
+            if (code[from].opcode != longForm && code[from].opcode != shortForm || !(code[from].operand is Label)) return false;
+            return code[target].labels.Contains((Label)code[from].operand);
+        }
+        private static int RefreshLocal(CodeInstruction instruction, bool load)
+        {
+            OpCode op = instruction.opcode;
+            if (op == (load ? OpCodes.Ldloc_0 : OpCodes.Stloc_0)) return 0;
+            if (op == (load ? OpCodes.Ldloc_1 : OpCodes.Stloc_1)) return 1;
+            if (op == (load ? OpCodes.Ldloc_2 : OpCodes.Stloc_2)) return 2;
+            if (op == (load ? OpCodes.Ldloc_3 : OpCodes.Stloc_3)) return 3;
+            if (op != (load ? OpCodes.Ldloc : OpCodes.Stloc) && op != (load ? OpCodes.Ldloc_S : OpCodes.Stloc_S)) return -1;
+            LocalVariableInfo local = instruction.operand as LocalVariableInfo;
+            if (local != null) return local.LocalIndex;
+            return instruction.operand is int ? (int)instruction.operand : -1;
+        }
+        private static bool RefreshLocalsAgree(MethodBase original, List<CodeInstruction> code)
+        {
+            IList<LocalVariableInfo> locals = original.GetMethodBody().LocalVariables;
+            foreach (CodeInstruction c in code)
+            {
+                if (!c.opcode.Name.StartsWith("ldloc") && !c.opcode.Name.StartsWith("stloc")) continue;
+                int local = RefreshLocal(c, c.opcode.Name.StartsWith("ldloc"));
+                LocalVariableInfo info = c.operand as LocalVariableInfo;
+                if (local < 0 || local >= locals.Count || info != null && info.LocalType != locals[local].LocalType) return false;
+            }
+            return true;
         }
 
         public static IEnumerable<CodeInstruction> TrackNodeColorsTranspiler(

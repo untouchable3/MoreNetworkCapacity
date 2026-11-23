@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 namespace MoreNetworkCapacity
 {
@@ -33,6 +35,10 @@ namespace MoreNetworkCapacity
             }
         }
 
+        internal static string CurrentReportPath
+        {
+            get { lock (Sync) { return _writer == null ? null : _writer.FilePath; } }
+        }
         internal static string LastStage
         {
             get { lock (Sync) { return _writer == null ? "not started" : _writer.LastStage; } }
@@ -65,6 +71,7 @@ namespace MoreNetworkCapacity
                 + "\r\nNo checkpoints are written during steady simulation.\r\n";
         }
 
+        internal string FilePath { get { return _path; } }
         internal string LastStage { get { lock (_sync) { return _lastStage; } } }
         internal string Status { get { lock (_sync) { return _failed ? "write failed: " + _failure + "; " + _path : _path; } } }
 
@@ -85,17 +92,32 @@ namespace MoreNetworkCapacity
                     foreach (string line in _recent) text.AppendLine(line);
                     Directory.CreateDirectory(Path.GetDirectoryName(_path));
                     string temporary = _path + ".tmp";
-                    // Flush and close before the risky operation proceeds. Replacing the
-                    // snapshot preserves the previous complete file if interrupted mid-write.
-                    using (FileStream stream = new FileStream(temporary, FileMode.Create,
-                        FileAccess.Write, FileShare.Read, 4096, FileOptions.WriteThrough))
+                    byte[] bytes = Encoding.UTF8.GetBytes(text.ToString());
+                    // A scanner can briefly hold the closed temporary file on Windows.
+                    // Retry only sharing/lock violations, at most twice, during loading.
+                    for (int attempt = 0; ; ++attempt)
                     {
-                        byte[] bytes = Encoding.UTF8.GetBytes(text.ToString());
-                        stream.Write(bytes, 0, bytes.Length);
-                        stream.Flush();
+                        try
+                        {
+                            // Flush and close before the risky operation proceeds. Replacing
+                            // preserves the prior complete snapshot if interrupted mid-write.
+                            using (FileStream stream = new FileStream(temporary, FileMode.Create,
+                                FileAccess.Write, FileShare.Read, 4096, FileOptions.WriteThrough))
+                            {
+                                stream.Write(bytes, 0, bytes.Length);
+                                stream.Flush();
+                            }
+                            if (File.Exists(_path)) File.Replace(temporary, _path, null);
+                            else File.Move(temporary, _path);
+                            break;
+                        }
+                        catch (IOException exception)
+                        {
+                            int error = Marshal.GetHRForException(exception) & 0xffff;
+                            if (attempt >= 2 || (error != 32 && error != 33)) throw;
+                            Thread.Sleep(10);
+                        }
                     }
-                    if (File.Exists(_path)) File.Replace(temporary, _path, null);
-                    else File.Move(temporary, _path);
                     if (!_written)
                     {
                         _written = true;

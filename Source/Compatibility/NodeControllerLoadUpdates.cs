@@ -7,10 +7,38 @@ namespace MoreNetworkCapacity.Compatibility
     {
         private static readonly object Sync = new object();
         private static ushort[] _initialNodes;
+        private static Action _finalUpdate;
+        private static int _generation;
+        internal static void CaptureFinal(Action update)
+        { lock (Sync) { _finalUpdate = update; } }
+
+        internal static Action TakeFinalUpdate()
+        {
+            lock (Sync)
+            {
+                Action update = _finalUpdate;
+                _finalUpdate = null;
+                int generation = _generation;
+                System.Diagnostics.Stopwatch wait = System.Diagnostics.Stopwatch.StartNew();
+                bool executed = false;
+                if (update == null) return null;
+                return delegate
+                {
+                    lock (Sync)
+                    {
+                        if (executed || generation != _generation) return;
+                        executed = true;
+                    }
+                    MoreNetworkCapacity.Logging.Info("Node Controller final update action started; queueWaitMs=" + wait.ElapsedMilliseconds);
+                    update();
+                };
+            }
+        }
 
         internal static void Reset()
         {
-            lock (Sync) { _initialNodes = null; }
+            lock (Sync) { _initialNodes = null; _finalUpdate = null; ++_generation; }
+
         }
 
         internal static void Capture(ushort[] nodeIds, bool initial)

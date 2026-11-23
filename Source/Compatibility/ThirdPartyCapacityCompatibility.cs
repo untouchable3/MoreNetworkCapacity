@@ -13,9 +13,18 @@ namespace MoreNetworkCapacity.Compatibility
             NetworkSkinsCompatibility.Reset();
             NodeControllerCompatibility.Reset();
             TMPECompatibility.Reset();
+            Ipt2NodeCompatibility.Reset();
+            Ipt3NodeCompatibility.Reset();
+            Ipt4NodeCompatibility.Reset();
+            TLMCompatibility.Reset();
+            TMCECompatibility.Reset();
             EightyOne2Compatibility.Reset();
             ZoningAdjusterCompatibility.Reset();
             StaticBufferCompatibility.Reset();
+            IntersectionMarkingCompatibility.Reset();
+            DirectConnectRoadsCompatibility.Reset();
+            CsurToolBoxCompatibility.Reset();
+            NetworkSearchCompatibility.Reset();
         }
 
         internal static void ApplyAll(Harmony harmony)
@@ -27,18 +36,21 @@ namespace MoreNetworkCapacity.Compatibility
             // These postconditions protect expanded rules and split offsets.
             // Failure during final loading must not be reported as a completed load.
             TMPECompatibility.Apply(harmony);
-            TryApply("Node Controller Renewal", delegate
-            {
-                NodeControllerCompatibility.Apply(harmony);
-            });
+            Ipt2NodeCompatibility.Apply(harmony);
+            Ipt3NodeCompatibility.Apply(harmony);
+            Ipt4NodeCompatibility.Apply(harmony);
+            TLMCompatibility.Apply(harmony);
+            TMCECompatibility.Apply(harmony);
+            NodeControllerCompatibility.Apply(harmony);
+            IntersectionMarkingCompatibility.Apply(harmony);
+            DirectConnectRoadsCompatibility.Apply(harmony);
+            NetworkSearchCompatibility.Apply(harmony, true);
+            TryApply("CSUR ToolBox", delegate { CsurToolBoxCompatibility.Apply(harmony); });
             TryApply("AdaptiveRoads", delegate
             {
                 AdaptiveRoadsCompatibility.Apply(harmony);
             });
-            TryApply("EightyOne2", delegate
-            {
-                EightyOne2Compatibility.Apply(harmony);
-            });
+            EightyOne2Compatibility.Apply(harmony);
             TryApply("NetworkSkins", delegate
             {
                 NetworkSkinsCompatibility.Apply(harmony);
@@ -60,10 +72,12 @@ namespace MoreNetworkCapacity.Compatibility
             // Required TM:PE range patches must not silently fail while the
             // expanded game continues loading or saving incompatible data.
             TMPECompatibility.ApplyEarly(harmony);
-            TryApply("EightyOne2 (early)", delegate
-            {
-                EightyOne2Compatibility.ApplyEarly(harmony);
-            });
+            Ipt2NodeCompatibility.Apply(harmony);
+            Ipt3NodeCompatibility.Apply(harmony);
+            Ipt4NodeCompatibility.Apply(harmony);
+            TLMCompatibility.Apply(harmony);
+            TMCECompatibility.Apply(harmony);
+            EightyOne2Compatibility.ApplyEarly(harmony);
             TryApply("Zoning Adjuster (early)", delegate
             {
                 ZoningAdjusterCompatibility.ApplyEarly(harmony);
@@ -76,10 +90,11 @@ namespace MoreNetworkCapacity.Compatibility
             {
                 AdaptiveRoadsCompatibility.Apply(harmony);
             });
-            TryApply("Node Controller Renewal (early)", delegate
-            {
-                NodeControllerCompatibility.Apply(harmony);
-            });
+            NodeControllerCompatibility.Apply(harmony);
+            IntersectionMarkingCompatibility.Apply(harmony);
+            DirectConnectRoadsCompatibility.Apply(harmony);
+            NetworkSearchCompatibility.Apply(harmony, false);
+            TryApply("CSUR ToolBox", delegate { CsurToolBoxCompatibility.Apply(harmony); });
             TryApply("KianCommons validity limits (early)", delegate
             {
                 StaticBufferCompatibility.ApplyEarly(harmony);
@@ -99,10 +114,12 @@ namespace MoreNetworkCapacity.Compatibility
                 NetworkSkinsCompatibility.Apply(harmony);
             });
             TMPECompatibility.PrepareForNetworkDeserialize(harmony, expandedSave);
-            TryApply("EightyOne2 network-load preparation", delegate
-            {
-                EightyOne2Compatibility.ApplyEarly(harmony);
-            });
+            Ipt2NodeCompatibility.Apply(harmony);
+            Ipt3NodeCompatibility.Apply(harmony);
+            Ipt4NodeCompatibility.Apply(harmony);
+            TLMCompatibility.Apply(harmony);
+            TMCECompatibility.Apply(harmony);
+            EightyOne2Compatibility.ApplyEarly(harmony);
             TryApply("Zoning Adjuster network-load preparation", delegate
             {
                 ZoningAdjusterCompatibility.ApplyEarly(harmony);

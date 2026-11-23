@@ -110,7 +110,14 @@ namespace MoreNetworkCapacity.Patches
             for (int i = 0; i < list.Count; ++i)
             {
                 CodeInstruction instruction = list[i];
-                if (IsInt32Constant(
+                if (original.DeclaringType == typeof(EventManager) && original.Name == "UpdateColorMap" &&
+                    IsInt32Constant(instruction, Capacity.VanillaEventColorIndexBase + 256))
+                {
+                    instruction.opcode = OpCodes.Call;
+                    instruction.operand = AccessTools.Method(typeof(Capacity), "GetRaceRoadColorIndex", null, null);
+                    ++eventReplacements;
+                }
+                else if (IsInt32Constant(
                     instruction,
                     Capacity.VanillaNodeColorIndexBase))
                 {

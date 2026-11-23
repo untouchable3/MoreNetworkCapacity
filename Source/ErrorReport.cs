@@ -16,11 +16,12 @@ namespace MoreNetworkCapacity
         private const int MaxFileBytes = 262144;
         private static readonly object Sync = new object();
         private static readonly Queue<string> Recent = new Queue<string>();
-        private static readonly Queue<string> Pending = new Queue<string>();
+        private static readonly Queue<KeyValuePair<bool, string>> Pending = new Queue<KeyValuePair<bool, string>>();
         private static readonly HashSet<string> Seen = new HashSet<string>();
         private static bool _listening, _initialized, _worker, _ioFailed;
         private static string _path, _header;
 
+        internal static string CurrentReportPath { get { lock (Sync) { return _path; } } }
         internal static void Start()
         {
             try
@@ -36,14 +37,14 @@ namespace MoreNetworkCapacity
                             + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff")
                             + "-" + Process.GetCurrentProcess().Id + ".txt");
                         _header = "More Network Capacity error report\r\nMNC: " + BuildInfo.Version
-                            + "\r\nGame: " + Application.version
+                            + "\r\nUnity application version: " + Application.version
                             + "\r\nUnity: " + Application.unityVersion
                             + "\r\nGame assembly MVID: "
                             + typeof(NetManager).Assembly.ManifestModule.ModuleVersionId
-                            + "\r\nTimes are UTC. Only MNC errors or Unity errors referencing MNC are captured."
+                            + "\r\nTimes are UTC. Captures MNC errors and errors observed during monitored save steps."
                             + "\r\nThis report does not establish which mod caused the error."
                             + "\r\nNative crashes and silent corruption may not produce a report."
-                            + "\r\nLimits: 8 distinct errors per process, 32 recent messages, 256 KiB per file."
+                            + "\r\nLimits: 8 general and 2 distinct save errors per process, 32 recent messages, 256 KiB per file."
                             + "\r\nReview paths and other personal details before sharing.\r\n";
                         _initialized = true;
                     }
@@ -81,16 +82,68 @@ namespace MoreNetworkCapacity
             }
         }
 
+        internal sealed class SaveStep
+        {
+            internal SaveStep Parent;
+            internal string Stage, LastCompleted;
+            internal bool Reported;
+        }
+
+        [ThreadStatic] private static SaveStep _saveStep;
+        private static readonly HashSet<string> SaveErrors = new HashSet<string>();
+
+        internal static SaveStep EnterSaveStep(string stage)
+        {
+            SaveStep step = new SaveStep { Stage = stage, Parent = _saveStep,
+                LastCompleted = _saveStep == null ? null : _saveStep.LastCompleted };
+            _saveStep = step;
+            return step;
+        }
+
+        internal static void LeaveSaveStep(SaveStep step, Exception failure)
+        {
+            if (step == null) return;
+            try
+            {
+                if (failure != null) CaptureSaveError(failure.Message, failure.ToString());
+            }
+            catch { /* Reporting must preserve the game's exception. */ }
+            finally
+            {
+                _saveStep = step.Parent;
+                if (step.Parent != null && failure == null && !step.Reported)
+                    step.Parent.LastCompleted = step.Stage;
+            }
+        }
+
+        internal static bool CaptureSaveError(string message, string stack)
+        {
+            SaveStep step = _saveStep;
+            if (step == null) return false;
+            if (step.Reported) return true;
+            for (SaveStep parent = step; parent != null; parent = parent.Parent) parent.Reported = true;
+            Capture("Save stage: " + step.Stage + "\nLast completed in this step: "
+                + (step.LastCompleted ?? "(none observed)") + "\n" + message, stack, true);
+            return true;
+        }
+
         internal static void Capture(string message, string stackTrace)
+        {
+            Capture(message, stackTrace, false);
+        }
+
+        private static void Capture(string message, string stackTrace, bool save)
         {
             lock (Sync)
             {
-                if (!_listening || _ioFailed || Seen.Count >= MaxErrors) return;
+                HashSet<string> seen = save ? SaveErrors : Seen;
+                int limit = save ? 2 : MaxErrors;
+                if (!_listening || _ioFailed || seen.Count >= limit) return;
                 string boundedMessage = Limit(message, 4096);
                 string boundedStack = Limit(stackTrace, 8192);
-                if (!Seen.Add(boundedMessage + "\n" + boundedStack)) return;
+                if (!seen.Add(boundedMessage + "\n" + boundedStack)) return;
                 StringBuilder report = new StringBuilder();
-                report.AppendLine("\r\n--- Error " + Seen.Count + "/" + MaxErrors + " ---");
+                report.AppendLine("\r\n--- Error " + seen.Count + "/" + limit + " ---");
                 report.AppendLine("UTC: " + DateTime.UtcNow.ToString("u"));
                 report.AppendLine("Last enable/load checkpoint: " + LoadStageJournal.LastStage);
                 report.AppendLine("Checkpoint journal: " + LoadStageJournal.Status);
@@ -103,8 +156,8 @@ namespace MoreNetworkCapacity
                 report.AppendLine(boundedMessage);
                 report.AppendLine(boundedStack);
                 report.AppendLine("Recent MNC messages (bounded):");
-                foreach (string line in Recent) report.AppendLine(line);
-                Pending.Enqueue(report.ToString());
+                foreach (string line in Recent) report.AppendLine(save ? Limit(line, 128) : line);
+                Pending.Enqueue(new KeyValuePair<bool, string>(save, report.ToString()));
                 if (_worker) return;
                 _worker = true;
                 try
@@ -124,6 +177,17 @@ namespace MoreNetworkCapacity
         private static void OnUnityLog(string message, string stackTrace, LogType type)
         {
             if (type != LogType.Error && type != LogType.Exception && type != LogType.Assert) return;
+            if (CaptureSaveError(message, stackTrace)) return;
+            // The packaging worker catches its own exceptions. Match its specific stack frame
+            // or the game's failure message when Unity has disabled error stack traces.
+            if ((stackTrace != null && stackTrace.Contains("<SaveGame>c__AnonStorey5")) ||
+                (message != null && (message.Contains("An error occurred while packaging to the save file.") ||
+                 message.Contains("Please free some space before saving.") ||
+                 message.Contains("Please delete save games from the Content Manager before saving."))))
+            {
+                Capture("Save stage: package write\n" + message, stackTrace, true);
+                return;
+            }
             // MNC's own Error entry point captures before emitting the Unity log.
             if (message != null && message.StartsWith("[MoreNetworkCapacity] ", StringComparison.Ordinal)) return;
             if ((message != null && message.IndexOf("MoreNetworkCapacity.", StringComparison.Ordinal) >= 0)
@@ -144,17 +208,19 @@ namespace MoreNetworkCapacity
                 }
                 while (true)
                 {
-                    string text;
+                    KeyValuePair<bool, string> entry;
                     lock (Sync)
                     {
                         if (Pending.Count == 0) { _worker = false; return; }
-                        text = Pending.Dequeue();
+                        entry = Pending.Dequeue();
                     }
                     using (FileStream stream = new FileStream(_path, FileMode.Append,
                         FileAccess.Write, FileShare.Read))
                     {
-                        byte[] bytes = Encoding.UTF8.GetBytes(text);
-                        if (stream.Length + bytes.Length <= MaxFileBytes)
+                        byte[] bytes = Encoding.UTF8.GetBytes(entry.Value);
+                        // Keep space for the first two failure snapshots even after a noisy load.
+                        int budget = entry.Key ? MaxFileBytes : MaxFileBytes - 112 * 1024;
+                        if (stream.Length + bytes.Length <= budget)
                             stream.Write(bytes, 0, bytes.Length);
                     }
                 }

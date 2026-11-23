@@ -29,6 +29,7 @@ namespace MoreNetworkCapacity
 
         public void OnDisabled()
         {
+            Diagnostics.InspectorLoading.LeaveCity();
             HarmonyBootstrap.Disable();
         }
 

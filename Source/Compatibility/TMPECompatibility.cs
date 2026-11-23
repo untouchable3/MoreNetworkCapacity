@@ -22,6 +22,7 @@ namespace MoreNetworkCapacity.Compatibility
             TMPENetworkArrayPatches.Reset();
             TMPEOverlayRanges.Reset();
             TMPEAdditionalRanges.Reset();
+            TMPEBollardPhase.Reset();
             _turnOnRedIndexPatched = false;
             _segmentEndIndexPatched = false;
             _segmentEndDecodePatched = false;
@@ -71,6 +72,7 @@ namespace MoreNetworkCapacity.Compatibility
             TMPENetworkArrayPatches.Apply(harmony, assembly);
             TMPEOverlayRanges.Apply(harmony, assembly);
             TMPEAdditionalRanges.Apply(harmony, assembly);
+            TMPEBollardPhase.Apply(harmony, assembly);
 
             Logging.Info("TM:PE compatibility pass completed.");
         }
@@ -85,6 +87,7 @@ namespace MoreNetworkCapacity.Compatibility
             TMPENetworkArrayPatches.Apply(harmony, assembly);
             TMPEOverlayRanges.Apply(harmony, assembly);
             TMPEAdditionalRanges.Apply(harmony, assembly);
+            TMPEBollardPhase.Apply(harmony, assembly);
         }
 
         internal static void PrepareForNetworkDeserialize(

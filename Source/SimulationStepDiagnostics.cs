@@ -56,6 +56,8 @@ namespace MoreNetworkCapacity
                 BindingFlags.Instance
                 | BindingFlags.Public
                 | BindingFlags.NonPublic);
+        private static readonly FieldInfo AsyncActionDelegateField =
+            AccessTools.DeclaredField(typeof(AsyncAction), "m_Action");
 
         private static Harmony _harmony;
         private static Thread _watchdog;
@@ -2758,6 +2760,12 @@ namespace MoreNetworkCapacity
 
             try
             {
+                if (task is AsyncAction && AsyncActionDelegateField != null)
+                {
+                    Action action = AsyncActionDelegateField.GetValue(task) as Action;
+                    if (action != null)
+                        return GetTypeName(action.Method.DeclaringType) + "." + action.Method.Name;
+                }
                 if (AsyncTaskNameField != null)
                 {
                     object value = AsyncTaskNameField.GetValue(task);

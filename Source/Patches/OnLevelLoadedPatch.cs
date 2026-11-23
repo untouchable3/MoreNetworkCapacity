@@ -63,14 +63,22 @@ namespace MoreNetworkCapacity.Patches
             }
 
             LoadStageJournal.Record("load: before final compatibility and color preparation");
+            ToolCollisionBuffers.EnsureLoadedController();
             ThirdPartyCapacityCompatibility.ApplyAll(
                 HarmonyBootstrap.HarmonyInstance);
             NetworkColorOffsetPatch.ApplyPostLoadFinalPass(
                 HarmonyBootstrap.HarmonyInstance);
 
             RenderManagerAwakePatch.EnsureCapacity();
+            RenderManagerAwakePatch.QueueEventColorRefresh();
             NetManagerColorUpdatePatch.RefreshExpandedColors();
             NetManagerDeserializeState.ResetLoadingExpanded();
+
+            // All loading extensions (including NC FinishInitialUpdate and DCR)
+            // have returned. Run NC's geometry update on the simulation thread.
+            System.Action nodeUpdate = NodeControllerLoadUpdates.TakeFinalUpdate();
+            if (nodeUpdate != null)
+                Singleton<SimulationManager>.instance.AddAction(nodeUpdate);
 
             if (!expandedSave
                 && Capacity.NodeLoopLimit == Capacity.VanillaNodeCapacity

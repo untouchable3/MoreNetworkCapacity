@@ -32,7 +32,10 @@ namespace MoreNetworkCapacity
             summary.AppendLine("MNC on-demand diagnostics (point-in-time, not an atomic simulation snapshot)");
             summary.AppendLine("MNC version: " + BuildInfo.Version);
             summary.AppendLine("UTC: " + DateTime.UtcNow.ToString("u"));
-            summary.AppendLine("Game: " + Application.version + " | Unity: " + Application.unityVersion);
+            summary.AppendLine("Unity application version: " + Application.version + " | Unity: " + Application.unityVersion);
+            TrySection(summary, "Game version", delegate {
+                summary.AppendLine("Cities: Skylines build: " + BuildConfig.applicationVersionFull);
+            });
             summary.AppendLine("Game assembly MVID: " + typeof(NetManager).Assembly.ManifestModule.ModuleVersionId);
             summary.AppendLine("MNC assembly MVID: " + typeof(Mod).Assembly.ManifestModule.ModuleVersionId);
             TrySection(summary, "Platform", delegate {
@@ -65,6 +68,7 @@ namespace MoreNetworkCapacity
             input.Patches = CapturePatches();
             input.GameLogs = new[] { Path.Combine(Application.dataPath, "output_log.txt"),
                 Path.Combine(persistent, "Player.log") };
+            input.CurrentReportPaths = new[] { LoadStageJournal.CurrentReportPath, ErrorReport.CurrentReportPath };
             input.ReportDirectories = new[] { Path.Combine(persistent, "MoreNetworkCapacity/ErrorReports"), legacy };
             return input;
         }
@@ -110,7 +114,7 @@ namespace MoreNetworkCapacity
             else
             {
                 CaptureFields(text, simulation, new[] { "m_simulationPaused", "m_forcedSimulationPause",
-                    "m_simulationSpeed", "m_selectedSimulationSpeed", "m_hasActions", "m_inSimulationStep",
+                    "m_simulationSpeed", "m_hasActions", "m_inSimulationStep",
                     "m_currentFrameIndex", "m_referenceFrameIndex" });
                 FieldInfo threadField = FindInstanceField(simulation.GetType(), "m_simulationThread");
                 Thread thread = threadField == null ? null : threadField.GetValue(simulation) as Thread;
@@ -118,7 +122,7 @@ namespace MoreNetworkCapacity
             }
             LoadingManager loading = Singleton<LoadingManager>.exists ? Singleton<LoadingManager>.instance : null;
             if (loading == null) text.AppendLine("LoadingManager not present.");
-            else CaptureFields(text, loading, new[] { "m_currentlyLoading", "m_renderDataReady", "m_simulationDataReady" });
+            else CaptureFields(text, loading, new[] { "m_currentlyLoading", "m_loadingComplete", "m_renderDataReady", "m_simulationDataReady" });
             // Field reads only: never initialize a tool or try to clear a pause lock.
             ToolManager tools = Singleton<ToolManager>.exists ? Singleton<ToolManager>.instance : null;
             if (tools == null) text.AppendLine("ToolManager not present.");
@@ -128,7 +132,8 @@ namespace MoreNetworkCapacity
                 FieldInfo properties = FindInstanceField(tools.GetType(), "m_properties");
                 object controller = properties == null ? null : properties.GetValue(tools);
                 if (controller == null) text.AppendLine("ToolController unavailable.");
-                else CaptureFields(text, controller, new[] { "m_currentTool", "m_nextTool" });
+                else CaptureFields(text, controller, new[] { "m_currentTool", "m_nextTool", "m_collidingDepth",
+                    "m_collidingSegments1", "m_collidingSegments2", "m_collidingBuildings1", "m_collidingBuildings2" });
             }
         }
 
@@ -152,7 +157,8 @@ namespace MoreNetworkCapacity
                     FieldInfo field = FindInstanceField(instance.GetType(), name);
                     if (field == null) { text.AppendLine(name + "=unavailable"); continue; }
                     object value = field.GetValue(instance);
-                    text.AppendLine(name + "=" + (value == null ? "null" : value.GetType().IsValueType
+                    Array array = value as Array;
+                    text.AppendLine(name + "=" + (value == null ? "null" : array != null ? "array length=" + array.Length : value.GetType().IsValueType
                         ? value.ToString() : value.GetType().FullName));
                 }
                 catch (Exception exception) { text.AppendLine(name + "=unavailable: " + exception.GetType().Name); }
@@ -184,7 +190,7 @@ namespace MoreNetworkCapacity
 
         private static string CapturePatches()
         {
-            StringBuilder text = new StringBuilder("Harmony render/pause patch metadata (not the final combined IL)\r\n");
+            StringBuilder text = new StringBuilder("Harmony render/pause/transport patch metadata (not the final combined IL)\r\n");
             CaptureMethodPatches(text, typeof(RenderManager), "Awake");
             CaptureMethodPatches(text, typeof(NetManager), "UpdateColorMap");
             CaptureMethodPatches(text, typeof(NetNode), "RefreshJunctionData");
@@ -192,6 +198,7 @@ namespace MoreNetworkCapacity
             CaptureMethodPatches(text, typeof(NetNode), "PopulateGroupData");
             CaptureMethodPatches(text, typeof(NetSegment), "RenderInstance");
             CaptureMethodPatches(text, typeof(BuildingManager), "UpdateColorMap");
+            CaptureMethodPatches(text, typeof(TransportLine), "SimulationStep");
             foreach (string name in new[] { "set_SimulationPaused", "set_ForcedSimulationPaused", "set_SelectedSimulationSpeed" })
                 CaptureMethodPatches(text, typeof(SimulationManager), name);
             Type bindings = typeof(NetManager).Assembly.GetType("Bindings", false);
