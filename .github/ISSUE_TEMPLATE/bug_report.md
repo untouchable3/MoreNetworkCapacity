@@ -12,9 +12,13 @@ Please briefly describe the problem and include the following where possible:
 
 - 模组版本、操作系统 · Mod version and operating system:
 - 何时出现、如何复现 · When it occurs and how to reproduce it:
-- 截图或游戏日志 · Screenshots or game logs:
+- 截图（选填） · Screenshots (optional):
 - 相关模组（如果知道）· Relevant mods, if known:
 
-不知道的信息可以留空。分享日志前，请检查其中的个人信息。
+不知道的信息可以留空。 · Leave unknown details blank.
 
-Leave unknown details blank. Check logs for personal information before sharing.
+## 诊断包（必填） · Diagnostic ZIP (required)
+
+在「MNC 设置 → 故障排查 → 导出诊断包」中导出 ZIP，并将文件拖到本 Issue 的编辑框中。如果游戏无法启动或无法导出，请说明原因。
+
+Go to **MNC Options → Diagnostics → Export diagnostic ZIP**, then drag the exported ZIP into this issue. If the game cannot start or you cannot export the ZIP, explain why.
