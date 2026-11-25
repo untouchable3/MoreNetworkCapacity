@@ -9,9 +9,15 @@ namespace MoreNetworkCapacity
     internal static class GameVersion
     {
         private const string TargetAssemblyHash =
-            "DF557994A03C93D8BB4A14F80B1FBCC0FB29D547658442445D078D069BCDD9FE";
+            "EA319CA84D96EA004FC413762370AE32F08279ED9EE6B164BE97016B05265FAD";
 
         private static readonly Guid TargetModuleVersionId =
+            new Guid("34370a81-9d28-47db-b3d0-af5b4ab4c9a1");
+
+        private const string PreviousAssemblyHash =
+            "DF557994A03C93D8BB4A14F80B1FBCC0FB29D547658442445D078D069BCDD9FE";
+
+        private static readonly Guid PreviousModuleVersionId =
             new Guid("e8d46364-9995-4176-87e0-ae3192b9a20b");
 
         private static bool _checked;
@@ -37,7 +43,8 @@ namespace MoreNetworkCapacity
             Assembly assembly = typeof(NetManager).Assembly;
             Guid mvid = assembly.ManifestModule.ModuleVersionId;
 
-            if (mvid != TargetModuleVersionId)
+            bool previousBuild = mvid == PreviousModuleVersionId;
+            if (mvid != TargetModuleVersionId && !previousBuild)
             {
                 Logging.Error("Assembly-CSharp MVID does not match the supported build.");
                 return;
@@ -52,7 +59,8 @@ namespace MoreNetworkCapacity
             }
 
             string hash = ComputeHash(location);
-            if (!string.Equals(hash, TargetAssemblyHash, StringComparison.OrdinalIgnoreCase))
+            string expectedHash = previousBuild ? PreviousAssemblyHash : TargetAssemblyHash;
+            if (!string.Equals(hash, expectedHash, StringComparison.OrdinalIgnoreCase))
             {
                 Logging.Error(
                     "Assembly-CSharp SHA-256 does not match the supported build: "

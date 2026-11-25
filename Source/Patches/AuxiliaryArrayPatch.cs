@@ -272,7 +272,7 @@ namespace MoreNetworkCapacity.Patches
             return AuxiliaryArrayPatchUtility.ExpandArrays(
                 original,
                 instructions,
-                100675981,
+                100675995,
                 Replacements,
                 "Coverage");
         }
@@ -294,7 +294,7 @@ namespace MoreNetworkCapacity.Patches
             return AuxiliaryArrayPatchUtility.ExpandArrays(
                 original,
                 instructions,
-                100676087,
+                100676101,
                 Replacements,
                 "Electricity");
         }
@@ -318,7 +318,7 @@ namespace MoreNetworkCapacity.Patches
             return AuxiliaryArrayPatchUtility.ExpandArrays(
                 original,
                 instructions,
-                100676587,
+                100676601,
                 Replacements,
                 "Water");
         }
@@ -340,7 +340,7 @@ namespace MoreNetworkCapacity.Patches
             return AuxiliaryArrayPatchUtility.ExpandSimulationSlices(
                 original,
                 instructions,
-                100676105,
+                100676119,
                 Replacements,
                 "Electricity");
         }
@@ -362,7 +362,7 @@ namespace MoreNetworkCapacity.Patches
             return AuxiliaryArrayPatchUtility.ExpandSimulationSlices(
                 original,
                 instructions,
-                100676625,
+                100676639,
                 Replacements,
                 "Water");
         }

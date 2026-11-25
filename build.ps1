@@ -20,9 +20,10 @@ $steamApps = Join-Path $steamRoot "steamapps"
 $gameDir = Join-Path $steamApps "common\Cities_Skylines"
 $workshopDir = Join-Path $steamApps "workshop\content\255710"
 $managedDir = Join-Path $gameDir "Cities_Data\Managed"
+$monoReferenceDir = Join-Path $gameDir "Mono\lib\mono\2.0"
 $harmonyDll = Join-Path $workshopDir "2040656402\CitiesHarmony.Harmony.dll"
 $harmonyApiDll = Join-Path $workshopDir "2101551127\CitiesHarmony.API.dll"
-$csc = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v3.5\csc.exe"
+$csc = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 
 if (-not (Test-Path $managedDir)) {
     throw "Cities: Skylines managed directory not found: $managedDir. Set MNC_STEAM_ROOT to the folder containing steamapps."
@@ -67,6 +68,10 @@ if ($sources.Count -eq 0) {
 }
 
 $references = @(
+    (Join-Path $monoReferenceDir "mscorlib.dll"),
+    (Join-Path $monoReferenceDir "System.dll"),
+    (Join-Path $monoReferenceDir "System.Core.dll"),
+    (Join-Path $monoReferenceDir "System.Xml.dll"),
     (Join-Path $managedDir "Assembly-CSharp.dll"),
     (Join-Path $managedDir "ColossalManaged.dll"),
     (Join-Path $managedDir "ICities.dll"),
@@ -77,6 +82,9 @@ $references = @(
 
 $args = @(
     "/nologo",
+    "/noconfig",
+    "/nostdlib+",
+    "/langversion:3",
     "/target:library",
     "/optimize+",
     "/warn:4",
@@ -95,7 +103,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Copy-Item $harmonyApiDll (Join-Path $outputDir "CitiesHarmony.API.dll") -Force
-Copy-Item (Join-Path $root "README.md") (Join-Path $outputDir "README.txt") -Force
+Copy-Item (Join-Path $root "Packaging\README.txt") (Join-Path $outputDir "README.txt") -Force
 
 & powershell -NoProfile -ExecutionPolicy Bypass `
     -File (Join-Path $root "Tools\Verify-PatchTargets.ps1") `

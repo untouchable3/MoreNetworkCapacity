@@ -1,10 +1,14 @@
-# More Network Capacity (MNC) 1.3.0
+# More Network Capacity (MNC) 1.3.1
 
 [简体中文](README.zh-CN.md) · [Steam Workshop](https://steamcommunity.com/sharedfiles/filedetails/?id=3814019901) · [Report an issue](https://github.com/untouchable3/MoreNetworkCapacity/issues)
 
 More Network Capacity raises the network node and segment limits in Cities: Skylines. It also adapts save handling, rendering, simulation, and supported third-party mods to the expanded network. [Harmony](https://steamcommunity.com/sharedfiles/filedetails/?id=2040656402) is required.
 
 **Back up your city before enabling MNC.** Keep MNC enabled when loading a city that uses the expanded network. On some saves, the simulation can take more than ten minutes to start after loading.
+
+## What's new in 1.3.1
+
+Added support for game version 1.21.2-f5.
 
 ## What's new in 1.3.0
 
@@ -28,6 +32,6 @@ When opening an issue, include the game and MNC versions, the steps that lead to
 
 - **Capacity and persistence.** Vanilla buffer sizes are 32,768 nodes and 36,864 segments. MNC expands both buffers to 65,024 entries, including reserved slots. The capacity stays below 65,536 so tools that iterate with a 16-bit unsigned index can terminate without wrapping. See [`Capacity.cs`](Source/Capacity.cs).
 - **Patches and adapters.** `Source/Patches` covers the game's network traversal, serialization, and rendering. `Source/Compatibility` contains adapters for individual mods. `Tools` contains IL inspection utilities and offline regression tests.
-- **Windows builds.** The repository's [`build.ps1`](build.ps1) requires a local Cities: Skylines installation, Harmony assemblies, and the .NET Framework 3.5 compiler. If your Steam library is elsewhere, set `MNC_STEAM_ROOT` to the folder containing `steamapps`. Run `powershell -NoProfile -File .\build.ps1` to generate and verify the patch targets, compile the mod, and assemble `dist/MoreNetworkCapacity`.
+- **Windows builds.** The repository's [`build.ps1`](build.ps1) requires a local Cities: Skylines installation, Harmony assemblies, and the .NET Framework 4 compiler. It compiles in C# 3 mode against the game's Mono 2.0 reference assemblies. If your Steam library is elsewhere, set `MNC_STEAM_ROOT` to the folder containing `steamapps`. Run `powershell -NoProfile -File .\build.ps1` to generate and verify the patch targets, compile the mod, and assemble `dist/MoreNetworkCapacity`.
 
 This project uses AI-assisted development. Contributions are welcome under the [MIT License](LICENSE). See the [contribution guide](CONTRIBUTING.md).

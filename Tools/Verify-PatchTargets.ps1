@@ -12,7 +12,7 @@ if ([string]::IsNullOrWhiteSpace($OccurrencesPath)) {
 
 $cecilPath = "$(if ($env:MNC_STEAM_ROOT) { $env:MNC_STEAM_ROOT } else { Join-Path $env:ProgramFiles 'Steam' })\steamapps\common\Cities_Skylines\Mono\lib\mono\2.0\Mono.Cecil.dll"
 $expectedHash =
-    "DF557994A03C93D8BB4A14F80B1FBCC0FB29D547658442445D078D069BCDD9FE"
+    "EA319CA84D96EA004FC413762370AE32F08279ED9EE6B164BE97016B05265FAD"
 
 Add-Type -Path $cecilPath
 
@@ -485,41 +485,41 @@ foreach ($fieldName in @(
 }
 
 Assert-ExactConstant `
-    "CoverageManager" "Awake" "100675981" 6 "0x0012" 32768 `
+    "CoverageManager" "Awake" "100675995" 6 "0x0012" 32768 `
     "CoverageManager.m_nodes allocation"
 Assert-ExactConstant `
-    "CoverageManager" "Awake" "100675981" 10 "0x0022" 32768 `
+    "CoverageManager" "Awake" "100675995" 10 "0x0022" 32768 `
     "CoverageManager.m_distances allocation"
 Assert-ExactConstant `
-    "ElectricityManager" "Awake" "100676087" 11 "0x0027" 32768 `
+    "ElectricityManager" "Awake" "100676101" 11 "0x0027" 32768 `
     "ElectricityManager.m_pulseUnits allocation"
 Assert-ExactConstant `
-    "ElectricityManager" "Awake" "100676087" 15 "0x0037" 32768 `
+    "ElectricityManager" "Awake" "100676101" 15 "0x0037" 32768 `
     "ElectricityManager.m_nodeGroups allocation"
 Assert-ExactConstant `
-    "WaterManager" "Awake" "100676587" 19 "0x0047" 32768 `
+    "WaterManager" "Awake" "100676601" 19 "0x0047" 32768 `
     "WaterManager.m_waterPulseUnits allocation"
 Assert-ExactConstant `
-    "WaterManager" "Awake" "100676587" 23 "0x0057" 32768 `
+    "WaterManager" "Awake" "100676601" 23 "0x0057" 32768 `
     "WaterManager.m_sewagePulseUnits allocation"
 Assert-ExactConstant `
-    "WaterManager" "Awake" "100676587" 27 "0x0067" 32768 `
+    "WaterManager" "Awake" "100676601" 27 "0x0067" 32768 `
     "WaterManager.m_heatingPulseUnits allocation"
 Assert-ExactConstant `
-    "WaterManager" "Awake" "100676587" 31 "0x0077" 32768 `
+    "WaterManager" "Awake" "100676601" 31 "0x0077" 32768 `
     "WaterManager.m_nodeData allocation"
 
 foreach ($simulationStep in @(
         @(
             "ElectricityManager",
-            "100676105",
+            "100676119",
             38,
             "0x0066",
             46,
             "0x0072"),
         @(
             "WaterManager",
-            "100676625",
+            "100676639",
             56,
             "0x0090",
             64,
@@ -551,10 +551,10 @@ if (-not (Test-FieldAssignment $colorUpdate 36864 "m_colorUpdateMinSegment")) {
 }
 
 Assert-ExactConstant `
-    "RenderManager" "Awake" "100676925" 7 "0x0017" 119042 `
+    "RenderManager" "Awake" "100676939" 7 "0x0017" 119042 `
     "RenderManager.m_indices allocation"
 Assert-ExactConstant `
-    "RenderManager" "Awake" "100676925" 64 "0x00BB" 119042 `
+    "RenderManager" "Awake" "100676939" 64 "0x00BB" 119042 `
     "RenderManager.m_indices initialization"
 
 $electricitySerialize = Get-MethodOrNull `

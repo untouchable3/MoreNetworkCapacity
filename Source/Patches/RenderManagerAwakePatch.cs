@@ -11,7 +11,7 @@ namespace MoreNetworkCapacity.Patches
     [HarmonyPatch(typeof(RenderManager), "Awake")]
     internal static class RenderManagerAwakePatch
     {
-        private const int MethodToken = 100676925;
+        private const int MethodToken = 100676939;
 
         private static readonly int[,] Replacements =
         {

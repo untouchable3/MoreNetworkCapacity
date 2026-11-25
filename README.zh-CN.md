@@ -1,10 +1,14 @@
-# More Network Capacity（MNC）1.3.0
+# More Network Capacity（MNC）1.3.1
 
 [English](README.md) · [Steam 创意工坊](https://steamcommunity.com/sharedfiles/filedetails/?id=3814019901) · [报告问题](https://github.com/untouchable3/MoreNetworkCapacity/issues)
 
 More Network Capacity 提高《城市：天际线》一代的路网节点和路段上限，并适配扩容后的存档读写、渲染、模拟和第三方模组。运行需要 [Harmony](https://steamcommunity.com/sharedfiles/filedetails/?id=2040656402)。
 
 **启用前请备份城市存档。** 已使用扩展路网的城市需要保持 MNC 启用再加载。部分存档读档后可能需要十分钟以上才开始模拟。
+
+## 1.3.1 更新
+
+适配游戏版本 1.21.2-f5。
 
 ## 1.3.0 更新
 
@@ -28,6 +32,6 @@ MNC 已对 TM:PE、Node Controller Renewal、Intersection Marking Tool、Adaptiv
 
 - **路网容量与存档。** 原版节点和路段缓冲区分别为 32,768 和 36,864 项。MNC 将两者扩展到 65,024 项，其中包含保留槽位。容量低于 65,536，因此使用 16 位无符号索引的工具可以正常终止遍历，避免索引回绕。参见 [`Capacity.cs`](Source/Capacity.cs)。
 - **补丁与适配。** `Source/Patches` 处理游戏的路网遍历、存档和渲染，`Source/Compatibility` 包含各模组的适配，`Tools` 提供 IL 检查工具和离线回归测试。
-- **Windows 构建。** 仓库中的 [`build.ps1`](build.ps1) 需要本机游戏程序集、Harmony 程序集和 .NET Framework 3.5 编译器。Steam 库安装在其他位置时，将环境变量 `MNC_STEAM_ROOT` 设为包含 `steamapps` 的目录。运行 `powershell -NoProfile -File .\build.ps1`，脚本会生成并验证补丁目标、编译模组，并输出到 `dist/MoreNetworkCapacity`。
+- **Windows 构建。** 仓库中的 [`build.ps1`](build.ps1) 需要本机游戏程序集、Harmony 程序集和 .NET Framework 4 编译器。脚本使用 C# 3 模式和游戏自带的 Mono 2.0 引用程序集。Steam 库安装在其他位置时，将环境变量 `MNC_STEAM_ROOT` 设为包含 `steamapps` 的目录。运行 `powershell -NoProfile -File .\build.ps1`，脚本会生成并验证补丁目标、编译模组，并输出到 `dist/MoreNetworkCapacity`。
 
 本项目使用 AI 辅助开发，采用 [MIT 许可证](LICENSE)。欢迎通过 [贡献指南](CONTRIBUTING.md) 参与。
